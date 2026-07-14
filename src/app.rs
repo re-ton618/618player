@@ -42,7 +42,6 @@ pub struct App {
     tracks: Vec<PathBuf>,
     visible_tracks: Vec<usize>,
     search_query: String,
-    scanning: bool,
     scroll_offset: f32,
     library_height: f32,
 }
@@ -53,7 +52,6 @@ impl Default for App {
             tracks: Vec::new(),
             visible_tracks: Vec::new(),
             search_query: String::new(),
-            scanning: false,
             scroll_offset: 0.0,
             library_height: INITIAL_LIBRARY_HEIGHT,
         }
@@ -64,7 +62,6 @@ impl Default for App {
 pub enum Message {
     Scanned(Vec<PathBuf>),
     SearchChanged(String),
-    ScanRequested,
     Scrolled(scrollable::Viewport),
     Resized(Size),
     WindowDragged,
@@ -75,12 +72,7 @@ pub enum Message {
 }
 
 pub fn new() -> (App, Task<Message>) {
-    let app = App {
-        scanning: true,
-        ..App::default()
-    };
-
-    (app, scan_library())
+    (App::default(), scan_library())
 }
 
 pub fn update(app: &mut App, message: Message) -> Task<Message> {
@@ -88,7 +80,6 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::Scanned(tracks) => {
             app.tracks = tracks;
             app.visible_tracks = filter_tracks(&app.tracks, &app.search_query);
-            app.scanning = false;
             app.scroll_offset = 0.0;
         }
         Message::SearchChanged(query) => {
@@ -96,11 +87,6 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             app.visible_tracks = filter_tracks(&app.tracks, &app.search_query);
             app.scroll_offset = 0.0;
         }
-        Message::ScanRequested if !app.scanning => {
-            app.scanning = true;
-            return scan_library();
-        }
-        Message::ScanRequested => {}
         Message::Scrolled(viewport) => {
             app.scroll_offset = viewport.absolute_offset().y;
             app.library_height = viewport.bounds().height;
@@ -283,18 +269,7 @@ pub fn theme(_app: &App) -> Theme {
 }
 
 fn top_bar(app: &App) -> Element<'_, Message> {
-    let brand = container(
-        row![
-            text("618").size(20).font(STRONG_FONT),
-            text("PLAYER").size(11)
-        ]
-        .spacing(8)
-        .align_y(Center),
-    )
-    .width(Length::FillPortion(1))
-    .height(Fill)
-    .padding([0, 18])
-    .center_y(Fill);
+    let leading_space = space().width(Length::FillPortion(1)).height(Fill);
 
     let search = text_input("Search tracks, artists, albums", &app.search_query)
         .on_input(Message::SearchChanged)
@@ -309,32 +284,6 @@ fn top_bar(app: &App) -> Element<'_, Message> {
         .padding([0, 16])
         .center_y(Fill);
 
-    let count_label = if app.search_query.is_empty() {
-        format!("{} TRACKS", app.tracks.len())
-    } else {
-        format!("{} / {}", app.visible_tracks.len(), app.tracks.len())
-    };
-    let track_count = container(text(count_label).size(11).font(STRONG_FONT))
-        .width(76)
-        .height(Fill)
-        .padding([0, 12])
-        .center_y(Fill)
-        .style(muted_text_style);
-
-    let scan_label = if app.scanning { "SCANNING" } else { "RESCAN" };
-    let scan = button(
-        container(text(scan_label).size(11).font(STRONG_FONT))
-            .width(Fill)
-            .height(Fill)
-            .center_x(Fill)
-            .center_y(Fill),
-    )
-    .width(72)
-    .height(Fill)
-    .padding(0)
-    .style(action_button_style)
-    .on_press_maybe((!app.scanning).then_some(Message::ScanRequested));
-
     let window_controls = row![
         window_button("-", Message::WindowMinimized, window_button_style),
         rule::vertical(1).style(divider_style),
@@ -344,20 +293,14 @@ fn top_bar(app: &App) -> Element<'_, Message> {
     ]
     .height(Fill);
 
-    let actions = row![
-        track_count,
-        space().width(Fill),
-        scan,
-        rule::vertical(1).style(divider_style),
-        window_controls,
-    ]
-    .width(Length::FillPortion(1))
-    .height(Fill)
-    .align_y(Center);
+    let actions = row![space().width(Fill), window_controls,]
+        .width(Length::FillPortion(1))
+        .height(Fill)
+        .align_y(Center);
 
     let bar = container(
         row![
-            brand,
+            leading_space,
             rule::vertical(1).style(divider_style),
             search_region,
             rule::vertical(1).style(divider_style),
@@ -484,20 +427,6 @@ fn search_style(_theme: &Theme, _status: text_input::Status) -> text_input::Styl
         placeholder: MUTED,
         value: TEXT,
         selection: Color { a: 0.35, ..ACCENT },
-    }
-}
-
-fn action_button_style(_theme: &Theme, status: button::Status) -> button::Style {
-    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-
-    button::Style {
-        background: hovered.then_some(Background::Color(SURFACE_HOVERED)),
-        text_color: match status {
-            button::Status::Disabled => Color { a: 0.45, ..MUTED },
-            button::Status::Hovered | button::Status::Pressed => ACCENT,
-            button::Status::Active => MUTED,
-        },
-        ..button::Style::default()
     }
 }
 
