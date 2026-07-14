@@ -1,6 +1,7 @@
 use std::ops::Range;
 use std::path::PathBuf;
 
+use iced::widget::stack;
 use iced::widget::{
     Column, button, column, container, mouse_area, row, rule, scrollable, sensor, space, text,
     text_input,
@@ -9,6 +10,7 @@ use iced::{
     Background, Border, Center, Color, Element, Fill, Font, Length, Shadow, Size, Task, Theme,
     Vector, font, theme, window,
 };
+use iced::{alignment, mouse};
 
 use crate::library;
 
@@ -20,6 +22,7 @@ const INITIAL_LIBRARY_HEIGHT: f32 =
     640.0 - TOP_BAR_HEIGHT - PLAYBACK_BAR_HEIGHT - DESKTOP_PADDING * 2.0 - SECTION_GAP * 2.0;
 const ROW_HEIGHT: f32 = 32.0;
 const OVERSCAN_ROWS: usize = 5;
+const RESIZE_HANDLE_SIZE: f32 = 6.0;
 
 const BACKGROUND: Color = Color::from_rgb8(13, 14, 16);
 const SURFACE: Color = Color::from_rgb8(23, 25, 28);
@@ -65,6 +68,7 @@ pub enum Message {
     Scrolled(scrollable::Viewport),
     Resized(Size),
     WindowDragged,
+    WindowResize(window::Direction),
     WindowMinimized,
     WindowMaximized,
     WindowClosed,
@@ -95,6 +99,12 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
         Message::WindowDragged => {
             return window::oldest().then(|id| match id {
                 Some(id) => window::drag(id),
+                None => Task::none(),
+            });
+        }
+        Message::WindowResize(direction) => {
+            return window::oldest().then(move |id| match id {
+                Some(id) => window::drag_resize(id, direction),
                 None => Task::none(),
             });
         }
@@ -164,7 +174,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
     .height(Fill)
     .style(section_style);
 
-    container(
+    let content = container(
         column![top_bar(app), library_section, playback_bar()]
             .spacing(SECTION_GAP)
             .width(Fill)
@@ -174,6 +184,107 @@ pub fn view(app: &App) -> Element<'_, Message> {
     .width(Fill)
     .height(Fill)
     .style(root_style)
+    .into();
+
+    if cfg!(target_os = "windows") {
+        resize_frame(content)
+    } else {
+        content
+    }
+}
+
+fn resize_frame(content: Element<'_, Message>) -> Element<'_, Message> {
+    use window::Direction;
+
+    stack([
+        content,
+        resize_handle(Direction::North),
+        resize_handle(Direction::South),
+        resize_handle(Direction::East),
+        resize_handle(Direction::West),
+        resize_handle(Direction::NorthEast),
+        resize_handle(Direction::NorthWest),
+        resize_handle(Direction::SouthEast),
+        resize_handle(Direction::SouthWest),
+    ])
+    .width(Fill)
+    .height(Fill)
+    .into()
+}
+
+fn resize_handle(direction: window::Direction) -> Element<'static, Message> {
+    use alignment::{Horizontal, Vertical};
+    use mouse::Interaction;
+    use window::Direction;
+
+    let (width, height, horizontal, vertical, interaction) = match direction {
+        Direction::North => (
+            Length::Fill,
+            Length::Fixed(RESIZE_HANDLE_SIZE),
+            Horizontal::Center,
+            Vertical::Top,
+            Interaction::ResizingVertically,
+        ),
+        Direction::South => (
+            Length::Fill,
+            Length::Fixed(RESIZE_HANDLE_SIZE),
+            Horizontal::Center,
+            Vertical::Bottom,
+            Interaction::ResizingVertically,
+        ),
+        Direction::East => (
+            Length::Fixed(RESIZE_HANDLE_SIZE),
+            Length::Fill,
+            Horizontal::Right,
+            Vertical::Center,
+            Interaction::ResizingHorizontally,
+        ),
+        Direction::West => (
+            Length::Fixed(RESIZE_HANDLE_SIZE),
+            Length::Fill,
+            Horizontal::Left,
+            Vertical::Center,
+            Interaction::ResizingHorizontally,
+        ),
+        Direction::NorthEast => (
+            Length::Fixed(RESIZE_HANDLE_SIZE),
+            Length::Fixed(RESIZE_HANDLE_SIZE),
+            Horizontal::Right,
+            Vertical::Top,
+            Interaction::ResizingDiagonallyUp,
+        ),
+        Direction::NorthWest => (
+            Length::Fixed(RESIZE_HANDLE_SIZE),
+            Length::Fixed(RESIZE_HANDLE_SIZE),
+            Horizontal::Left,
+            Vertical::Top,
+            Interaction::ResizingDiagonallyDown,
+        ),
+        Direction::SouthEast => (
+            Length::Fixed(RESIZE_HANDLE_SIZE),
+            Length::Fixed(RESIZE_HANDLE_SIZE),
+            Horizontal::Right,
+            Vertical::Bottom,
+            Interaction::ResizingDiagonallyDown,
+        ),
+        Direction::SouthWest => (
+            Length::Fixed(RESIZE_HANDLE_SIZE),
+            Length::Fixed(RESIZE_HANDLE_SIZE),
+            Horizontal::Left,
+            Vertical::Bottom,
+            Interaction::ResizingDiagonallyUp,
+        ),
+    };
+
+    container(
+        mouse_area(space().width(width).height(height))
+            .on_press(Message::WindowResize(direction))
+            .interaction(interaction),
+    )
+    .width(Fill)
+    .height(Fill)
+    .align_x(horizontal)
+    .align_y(vertical)
     .into()
 }
 
