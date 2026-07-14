@@ -2,17 +2,41 @@ use std::ops::Range;
 use std::path::PathBuf;
 
 use iced::widget::{
-    Column, button, column, container, row, rule, scrollable, sensor, space, text, text_input,
+    Column, button, column, container, mouse_area, row, rule, scrollable, sensor, space, text,
+    text_input,
 };
-use iced::{Background, Border, Color, Element, Fill, Size, Task, Theme};
+use iced::{
+    Background, Border, Center, Color, Element, Fill, Font, Length, Shadow, Size, Task, Theme,
+    Vector, font, theme, window,
+};
 
 use crate::library;
 
-const TOP_BAR_HEIGHT: f32 = 48.0;
-const PLAYBACK_BAR_HEIGHT: f32 = 40.0;
-const INITIAL_LIBRARY_HEIGHT: f32 = 640.0 - TOP_BAR_HEIGHT - PLAYBACK_BAR_HEIGHT - 2.0;
+const TOP_BAR_HEIGHT: f32 = 56.0;
+const PLAYBACK_BAR_HEIGHT: f32 = 56.0;
+const DESKTOP_PADDING: f32 = 12.0;
+const SECTION_GAP: f32 = 12.0;
+const INITIAL_LIBRARY_HEIGHT: f32 =
+    640.0 - TOP_BAR_HEIGHT - PLAYBACK_BAR_HEIGHT - DESKTOP_PADDING * 2.0 - SECTION_GAP * 2.0;
 const ROW_HEIGHT: f32 = 32.0;
 const OVERSCAN_ROWS: usize = 5;
+
+const BACKGROUND: Color = Color::from_rgb8(13, 14, 16);
+const SURFACE: Color = Color::from_rgb8(23, 25, 28);
+const SURFACE_HOVERED: Color = Color::from_rgb8(34, 37, 41);
+const DIVIDER: Color = Color::from_rgb8(52, 55, 61);
+const TEXT: Color = Color::from_rgb8(239, 237, 231);
+const MUTED: Color = Color::from_rgb8(143, 147, 154);
+const ACCENT: Color = Color::from_rgb8(211, 235, 111);
+const DANGER: Color = Color::from_rgb8(210, 70, 76);
+const STRONG_FONT: Font = Font {
+    weight: font::Weight::Semibold,
+    ..Font::DEFAULT
+};
+const ICON_FONT: Font = Font {
+    weight: font::Weight::Semibold,
+    ..Font::MONOSPACE
+};
 
 pub struct App {
     tracks: Vec<PathBuf>,
@@ -43,6 +67,11 @@ pub enum Message {
     ScanRequested,
     Scrolled(scrollable::Viewport),
     Resized(Size),
+    WindowDragged,
+    WindowMinimized,
+    WindowMaximized,
+    WindowClosed,
+    PlaybackControlPressed,
 }
 
 pub fn new() -> (App, Task<Message>) {
@@ -77,6 +106,31 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             app.library_height = viewport.bounds().height;
         }
         Message::Resized(size) => app.library_height = size.height,
+        Message::WindowDragged => {
+            return window::oldest().then(|id| match id {
+                Some(id) => window::drag(id),
+                None => Task::none(),
+            });
+        }
+        Message::WindowMinimized => {
+            return window::oldest().then(|id| match id {
+                Some(id) => window::minimize(id, true),
+                None => Task::none(),
+            });
+        }
+        Message::WindowMaximized => {
+            return window::oldest().then(|id| match id {
+                Some(id) => window::toggle_maximize(id),
+                None => Task::none(),
+            });
+        }
+        Message::WindowClosed => {
+            return window::oldest().then(|id| match id {
+                Some(id) => window::close(id),
+                None => Task::none(),
+            });
+        }
+        Message::PlaybackControlPressed => {}
     }
 
     Task::none()
@@ -102,7 +156,7 @@ pub fn view(app: &App) -> Element<'_, Message> {
                     .padding([0, 16])
                     .center_y(Fill),
             )
-            .push(rule::horizontal(1));
+            .push(rule::horizontal(1).style(divider_style));
     }
 
     if visible.end < track_count {
@@ -112,25 +166,147 @@ pub fn view(app: &App) -> Element<'_, Message> {
     let library = scrollable(rows)
         .width(Fill)
         .height(Fill)
-        .on_scroll(Message::Scrolled);
+        .on_scroll(Message::Scrolled)
+        .style(scrollable_style);
 
-    let context = container(text("RUST MUSIC  /  LIBRARY").size(13))
-        .width(180)
+    let library_section = container(
+        sensor(library)
+            .on_show(Message::Resized)
+            .on_resize(Message::Resized),
+    )
+    .width(Fill)
+    .height(Fill)
+    .style(section_style);
+
+    container(
+        column![top_bar(app), library_section, playback_bar()]
+            .spacing(SECTION_GAP)
+            .width(Fill)
+            .height(Fill),
+    )
+    .padding(DESKTOP_PADDING)
+    .width(Fill)
+    .height(Fill)
+    .style(root_style)
+    .into()
+}
+
+fn playback_bar() -> Element<'static, Message> {
+    let controls = row![
+        transport_button("|<", transport_button_style),
+        rule::vertical(1).style(divider_style),
+        transport_button(">", play_button_style),
+        rule::vertical(1).style(divider_style),
+        transport_button(">|", transport_button_style),
+        rule::vertical(1).style(divider_style),
+    ]
+    .height(Fill);
+
+    let left = row![controls, space().width(Fill)]
+        .width(188)
         .height(Fill)
-        .padding([0, 16])
-        .center_y(Fill);
+        .align_y(Center);
 
-    let search = text_input("Search library", &app.search_query)
+    let progress = container(
+        row![
+            text("0:00").size(10).font(STRONG_FONT),
+            container(space())
+                .width(Fill)
+                .height(3)
+                .style(progress_track_style),
+            text("--:--").size(10).font(STRONG_FONT),
+        ]
+        .spacing(12)
+        .align_y(Center),
+    )
+    .width(Fill)
+    .height(Fill)
+    .padding([0, 18])
+    .center_y(Fill)
+    .style(muted_text_style);
+
+    let volume_track = row![
+        container(space())
+            .width(46)
+            .height(3)
+            .style(progress_fill_style),
+        container(space())
+            .width(Fill)
+            .height(3)
+            .style(progress_track_style),
+    ]
+    .width(72)
+    .align_y(Center);
+
+    let volume = container(
+        row![text("VOL").size(10).font(STRONG_FONT), volume_track]
+            .spacing(12)
+            .align_y(Center),
+    )
+    .width(188)
+    .height(Fill)
+    .padding([0, 16])
+    .center_y(Fill)
+    .align_x(iced::alignment::Horizontal::Right)
+    .style(muted_text_style);
+
+    container(
+        row![
+            left,
+            rule::vertical(1).style(divider_style),
+            progress,
+            rule::vertical(1).style(divider_style),
+            volume,
+        ]
+        .width(Fill)
+        .height(Fill)
+        .align_y(Center),
+    )
+    .width(Fill)
+    .height(PLAYBACK_BAR_HEIGHT)
+    .style(top_bar_style)
+    .into()
+}
+
+pub fn theme(_app: &App) -> Theme {
+    Theme::custom(
+        "618",
+        theme::Palette {
+            background: BACKGROUND,
+            text: TEXT,
+            primary: ACCENT,
+            success: Color::from_rgb8(116, 190, 141),
+            warning: Color::from_rgb8(224, 174, 88),
+            danger: DANGER,
+        },
+    )
+}
+
+fn top_bar(app: &App) -> Element<'_, Message> {
+    let brand = container(
+        row![
+            text("618").size(20).font(STRONG_FONT),
+            text("PLAYER").size(11)
+        ]
+        .spacing(8)
+        .align_y(Center),
+    )
+    .width(Length::FillPortion(1))
+    .height(Fill)
+    .padding([0, 18])
+    .center_y(Fill);
+
+    let search = text_input("Search tracks, artists, albums", &app.search_query)
         .on_input(Message::SearchChanged)
         .width(Fill)
         .size(14)
-        .padding([8, 0])
+        .padding([9, 0])
         .style(search_style);
 
     let search_region = container(search)
-        .width(Fill)
+        .width(300)
         .height(Fill)
-        .padding([0, 12])
+        .padding([0, 16])
         .center_y(Fill);
 
     let count_label = if app.search_query.is_empty() {
@@ -138,68 +314,231 @@ pub fn view(app: &App) -> Element<'_, Message> {
     } else {
         format!("{} / {}", app.visible_tracks.len(), app.tracks.len())
     };
-    let track_count = container(text(count_label).size(12))
-        .width(96)
+    let track_count = container(text(count_label).size(11).font(STRONG_FONT))
+        .width(76)
         .height(Fill)
-        .center_x(Fill)
-        .center_y(Fill);
+        .padding([0, 12])
+        .center_y(Fill)
+        .style(muted_text_style);
 
     let scan_label = if app.scanning { "SCANNING" } else { "RESCAN" };
-    let mut scan = button(text(scan_label).size(12))
-        .width(92)
-        .height(Fill)
-        .padding([0, 16])
-        .style(button::text);
-
-    if !app.scanning {
-        scan = scan.on_press(Message::ScanRequested);
-    }
-
-    let top_bar = row![
-        context,
-        rule::vertical(1),
-        search_region,
-        rule::vertical(1),
-        track_count,
-        rule::vertical(1),
-        scan,
-    ]
-    .width(Fill)
-    .height(TOP_BAR_HEIGHT);
-
-    let playback_bar = container(text("NOTHING PLAYING").size(13))
-        .width(Fill)
-        .height(PLAYBACK_BAR_HEIGHT)
-        .padding([0, 16])
-        .center_y(Fill);
-
-    column![
-        top_bar,
-        rule::horizontal(1),
-        sensor(library)
-            .on_show(Message::Resized)
-            .on_resize(Message::Resized),
-        rule::horizontal(1),
-        playback_bar
-    ]
-    .width(Fill)
+    let scan = button(
+        container(text(scan_label).size(11).font(STRONG_FONT))
+            .width(Fill)
+            .height(Fill)
+            .center_x(Fill)
+            .center_y(Fill),
+    )
+    .width(72)
     .height(Fill)
-    .into()
+    .padding(0)
+    .style(action_button_style)
+    .on_press_maybe((!app.scanning).then_some(Message::ScanRequested));
+
+    let window_controls = row![
+        window_button("-", Message::WindowMinimized, window_button_style),
+        rule::vertical(1).style(divider_style),
+        window_button("[]", Message::WindowMaximized, window_button_style),
+        rule::vertical(1).style(divider_style),
+        window_button("X", Message::WindowClosed, close_button_style),
+    ]
+    .height(Fill);
+
+    let actions = row![
+        track_count,
+        space().width(Fill),
+        scan,
+        rule::vertical(1).style(divider_style),
+        window_controls,
+    ]
+    .width(Length::FillPortion(1))
+    .height(Fill)
+    .align_y(Center);
+
+    let bar = container(
+        row![
+            brand,
+            rule::vertical(1).style(divider_style),
+            search_region,
+            rule::vertical(1).style(divider_style),
+            actions,
+        ]
+        .width(Fill)
+        .height(Fill)
+        .align_y(Center),
+    )
+    .width(Fill)
+    .height(TOP_BAR_HEIGHT)
+    .style(top_bar_style);
+
+    mouse_area(bar).on_press(Message::WindowDragged).into()
 }
 
-pub fn theme(_app: &App) -> Theme {
-    Theme::Dark
+fn window_button<'a>(
+    label: &'a str,
+    message: Message,
+    style: fn(&Theme, button::Status) -> button::Style,
+) -> iced::widget::Button<'a, Message> {
+    button(
+        container(text(label).size(12).font(ICON_FONT))
+            .width(Fill)
+            .height(Fill)
+            .center_x(Fill)
+            .center_y(Fill),
+    )
+    .width(35)
+    .height(Fill)
+    .padding(0)
+    .style(style)
+    .on_press(message)
+}
+
+fn transport_button<'a>(
+    label: &'a str,
+    style: fn(&Theme, button::Status) -> button::Style,
+) -> iced::widget::Button<'a, Message> {
+    button(
+        container(text(label).size(12).font(ICON_FONT))
+            .width(Fill)
+            .height(Fill)
+            .center_x(Fill)
+            .center_y(Fill),
+    )
+    .width(44)
+    .height(Fill)
+    .padding(0)
+    .style(style)
+    .on_press(Message::PlaybackControlPressed)
 }
 
 fn scan_library() -> Task<Message> {
     Task::perform(library::scan_music_directory(), Message::Scanned)
 }
 
-fn search_style(theme: &Theme, status: text_input::Status) -> text_input::Style {
-    let mut style = text_input::default(theme, status);
-    style.background = Background::Color(Color::TRANSPARENT);
-    style.border = Border::default();
+fn root_style(_theme: &Theme) -> container::Style {
+    container::Style::default().background(BACKGROUND)
+}
+
+fn top_bar_style(_theme: &Theme) -> container::Style {
+    container::Style::default()
+        .background(SURFACE)
+        .border(Border {
+            color: DIVIDER,
+            width: 1.0,
+            radius: 0.0.into(),
+        })
+        .shadow(Shadow {
+            color: Color::from_rgba8(0, 0, 0, 0.35),
+            offset: Vector::new(0.0, 4.0),
+            blur_radius: 14.0,
+        })
+}
+
+fn section_style(_theme: &Theme) -> container::Style {
+    container::Style::default()
+        .background(SURFACE)
+        .border(Border {
+            color: DIVIDER,
+            width: 1.0,
+            radius: 0.0.into(),
+        })
+}
+
+fn progress_track_style(_theme: &Theme) -> container::Style {
+    container::Style::default().background(DIVIDER)
+}
+
+fn progress_fill_style(_theme: &Theme) -> container::Style {
+    container::Style::default().background(ACCENT)
+}
+
+fn scrollable_style(theme: &Theme, status: scrollable::Status) -> scrollable::Style {
+    let mut style = scrollable::default(theme, status);
+    style.container.border.radius = 0.0.into();
+    style.vertical_rail.border.radius = 0.0.into();
+    style.vertical_rail.scroller.border.radius = 0.0.into();
+    style.horizontal_rail.border.radius = 0.0.into();
+    style.horizontal_rail.scroller.border.radius = 0.0.into();
+    style.auto_scroll.border.radius = 0.0.into();
     style
+}
+
+fn muted_text_style(_theme: &Theme) -> container::Style {
+    container::Style::default().color(MUTED)
+}
+
+fn divider_style(_theme: &Theme) -> rule::Style {
+    rule::Style {
+        color: DIVIDER,
+        radius: 0.0.into(),
+        fill_mode: rule::FillMode::Full,
+        snap: true,
+    }
+}
+
+fn search_style(_theme: &Theme, _status: text_input::Status) -> text_input::Style {
+    text_input::Style {
+        background: Background::Color(Color::TRANSPARENT),
+        border: Border::default(),
+        icon: MUTED,
+        placeholder: MUTED,
+        value: TEXT,
+        selection: Color { a: 0.35, ..ACCENT },
+    }
+}
+
+fn action_button_style(_theme: &Theme, status: button::Status) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+
+    button::Style {
+        background: hovered.then_some(Background::Color(SURFACE_HOVERED)),
+        text_color: match status {
+            button::Status::Disabled => Color { a: 0.45, ..MUTED },
+            button::Status::Hovered | button::Status::Pressed => ACCENT,
+            button::Status::Active => MUTED,
+        },
+        ..button::Style::default()
+    }
+}
+
+fn window_button_style(_theme: &Theme, status: button::Status) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+
+    button::Style {
+        background: hovered.then_some(Background::Color(SURFACE_HOVERED)),
+        text_color: if hovered { TEXT } else { MUTED },
+        ..button::Style::default()
+    }
+}
+
+fn close_button_style(_theme: &Theme, status: button::Status) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+
+    button::Style {
+        background: hovered.then_some(Background::Color(DANGER)),
+        text_color: if hovered { Color::WHITE } else { MUTED },
+        ..button::Style::default()
+    }
+}
+
+fn transport_button_style(_theme: &Theme, status: button::Status) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+
+    button::Style {
+        background: hovered.then_some(Background::Color(SURFACE_HOVERED)),
+        text_color: if hovered { TEXT } else { MUTED },
+        ..button::Style::default()
+    }
+}
+
+fn play_button_style(_theme: &Theme, status: button::Status) -> button::Style {
+    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+
+    button::Style {
+        background: hovered.then_some(Background::Color(SURFACE_HOVERED)),
+        text_color: ACCENT,
+        ..button::Style::default()
+    }
 }
 
 fn filter_tracks(tracks: &[PathBuf], query: &str) -> Vec<usize> {
