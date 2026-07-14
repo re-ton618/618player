@@ -47,9 +47,7 @@ fn extract_inner(job: &MetadataJob) -> lofty::error::Result<TrackUpdate> {
             .unwrap_or_else(|| fallback_title(&job.path)),
         artist: tag.and_then(Accessor::artist).and_then(clean),
         album: tag.and_then(Accessor::album).and_then(clean),
-        year: tag
-            .and_then(Accessor::date)
-            .map(|timestamp| u32::from(timestamp.year)),
+        year: tag.and_then(Accessor::year),
         duration_ms: Some(
             tagged_file
                 .properties()
