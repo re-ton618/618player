@@ -8,6 +8,8 @@ license = "GPL-3.0-only"
 [dependencies]
 dirs = "6.0"
 iced = { version = "0.14", default-features = false, features = ["crisp", "thread-pool", "tiny-skia", "wayland", "wgpu", "x11"] }
+lofty = "0.24"
+rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
 walkdir = "2.5"
 
 [dev-dependencies]

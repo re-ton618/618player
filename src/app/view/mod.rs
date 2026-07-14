@@ -18,6 +18,10 @@ pub(super) const INITIAL_LIBRARY_HEIGHT: f32 =
 pub(super) const ROW_HEIGHT: f32 = 32.0;
 pub(super) const OVERSCAN_ROWS: usize = 5;
 
+pub(super) fn library_scroll_id() -> iced::widget::Id {
+    iced::widget::Id::new("library-scroll")
+}
+
 pub(super) fn view(app: &App) -> Element<'_, Message> {
     let content = container(
         column![top_bar::view(app), library::view(app), playback::view()]
