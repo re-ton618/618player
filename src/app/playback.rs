@@ -94,6 +94,7 @@ pub(super) struct State {
     current: Option<CurrentTrack>,
     last_request_id: u64,
     artwork: Artwork,
+    volume: u8,
 }
 
 impl Default for State {
@@ -102,6 +103,7 @@ impl Default for State {
             current: None,
             last_request_id: 0,
             artwork: Artwork::Empty,
+            volume: 100,
         }
     }
 }
@@ -184,6 +186,17 @@ impl State {
 
     pub(super) fn artwork_handle(&self) -> Option<&image::Handle> {
         self.artwork.handle()
+    }
+
+    pub(super) fn volume(&self) -> u8 {
+        self.volume
+    }
+
+    pub(super) fn set_volume(&mut self, volume: u8) {
+        let volume = volume.min(100);
+        if self.volume != volume {
+            self.volume = volume;
+        }
     }
 
     pub(super) fn loaded(
@@ -341,6 +354,18 @@ mod tests {
             PathBuf::from(format!("/music/{album}/{file}.flac")),
             Some(album),
         )
+    }
+
+    #[test]
+    fn volume_clamps_to_percent_range() {
+        let mut state = State::default();
+        assert_eq!(state.volume(), 100);
+
+        state.set_volume(42);
+        assert_eq!(state.volume(), 42);
+
+        state.set_volume(255);
+        assert_eq!(state.volume(), 100);
     }
 
     #[test]

@@ -1,4 +1,4 @@
-use iced::widget::{button, container, rule, scrollable, text_input};
+use iced::widget::{button, container, rule, scrollable, slider, text_input};
 use iced::{Background, Border, Color, Font, Shadow, Theme, Vector, font, theme};
 
 const BACKGROUND: Color = Color::from_rgb8(13, 14, 16);
@@ -80,10 +80,6 @@ pub(crate) fn artwork_placeholder_style(_theme: &Theme) -> container::Style {
             width: ARTWORK_BORDER_WIDTH,
             radius: 0.0.into(),
         })
-}
-
-pub(crate) fn progress_fill_style(_theme: &Theme) -> container::Style {
-    container::Style::default().background(ACCENT)
 }
 
 pub(crate) fn scrollable_style(theme: &Theme, status: scrollable::Status) -> scrollable::Style {
@@ -186,5 +182,48 @@ pub(crate) fn play_button_style(_theme: &Theme, status: button::Status) -> butto
         background: hovered.then_some(Background::Color(SURFACE_HOVERED)),
         text_color: ACCENT,
         ..button::Style::default()
+    }
+}
+
+pub(crate) fn volume_popup_style(_theme: &Theme) -> container::Style {
+    container::Style::default()
+        .background(SURFACE)
+        .border(Border {
+            color: BORDER,
+            width: 1.0,
+            radius: 0.0.into(),
+        })
+        .shadow(Shadow {
+            color: Color::from_rgba8(0, 0, 0, 0.35),
+            offset: Vector::new(0.0, 4.0),
+            blur_radius: 14.0,
+        })
+}
+
+pub(crate) fn volume_slider_style(_theme: &Theme, status: slider::Status) -> slider::Style {
+    let active = matches!(
+        status,
+        slider::Status::Hovered | slider::Status::Dragged
+    );
+
+    slider::Style {
+        rail: slider::Rail {
+            backgrounds: (Background::Color(ACCENT), Background::Color(DIVIDER)),
+            width: 3.0,
+            border: Border {
+                radius: 0.0.into(),
+                width: 0.0,
+                color: Color::TRANSPARENT,
+            },
+        },
+        handle: slider::Handle {
+            shape: slider::HandleShape::Rectangle {
+                width: 2,
+                border_radius: 0.0.into(),
+            },
+            background: Background::Color(if active { TEXT } else { ACCENT }),
+            border_width: 0.0,
+            border_color: Color::TRANSPARENT,
+        },
     }
 }

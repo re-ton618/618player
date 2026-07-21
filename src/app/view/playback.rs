@@ -2,10 +2,12 @@ use iced::widget::{button, container, image, row, rule, space, text};
 use iced::{Center, ContentFit, Element, Fill, Theme};
 
 use super::PLAYBACK_BAR_HEIGHT;
+use super::volume_control;
 use crate::app::{App, Message};
 use crate::theme;
 
-const CONTROL_REGION_WIDTH: f32 = 188.0;
+const TRANSPORT_BUTTON_WIDTH: f32 = PLAYBACK_BAR_HEIGHT;
+const CONTROL_REGION_WIDTH: f32 = TRANSPORT_BUTTON_WIDTH * 3.0 + 3.0 + 53.0;
 const ARTWORK_IMAGE_SIZE: f32 = PLAYBACK_BAR_HEIGHT - 2.0 * theme::ARTWORK_BORDER_WIDTH;
 const SIDE_REGION_WIDTH: f32 = CONTROL_REGION_WIDTH + PLAYBACK_BAR_HEIGHT;
 
@@ -43,30 +45,14 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
     .center_y(Fill)
     .style(theme::muted_text_style);
 
-    let volume_track = row![
-        container(space())
-            .width(46)
-            .height(3)
-            .style(theme::progress_fill_style),
-        container(space())
-            .width(Fill)
-            .height(3)
-            .style(theme::progress_track_style),
+    let right = row![
+        space().width(Fill),
+        rule::vertical(1).style(theme::divider_style),
+        volume_control::view(app.playback.volume()),
     ]
-    .width(72)
-    .align_y(Center);
-
-    let volume = container(
-        row![text("VOL").size(10).font(theme::STRONG_FONT), volume_track]
-            .spacing(12)
-            .align_y(Center),
-    )
     .width(SIDE_REGION_WIDTH)
     .height(Fill)
-    .padding([0, 16])
-    .center_y(Fill)
-    .align_x(iced::alignment::Horizontal::Right)
-    .style(theme::muted_text_style);
+    .align_y(Center);
 
     container(
         row![
@@ -74,7 +60,7 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
             rule::vertical(1).style(theme::divider_style),
             progress,
             rule::vertical(1).style(theme::divider_style),
-            volume,
+            right,
         ]
         .width(Fill)
         .height(Fill)
@@ -127,7 +113,7 @@ fn transport_button<'a>(
         .center_x(Fill)
         .center_y(Fill),
     )
-    .width(44)
+    .width(TRANSPORT_BUTTON_WIDTH)
     .height(Fill)
     .padding(0)
     .style(style)

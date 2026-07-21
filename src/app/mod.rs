@@ -64,6 +64,7 @@ pub enum Message {
     WindowMaximized,
     WindowClosed,
     PlaybackControlPressed,
+    VolumeChanged(u8),
     Tabs(tabs::Message),
 }
 
@@ -184,6 +185,7 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             });
         }
         Message::PlaybackControlPressed => {}
+        Message::VolumeChanged(volume) => app.playback.set_volume(volume),
         Message::Tabs(message) => {
             let outcome = app.tabs.update(message);
             if outcome.persist

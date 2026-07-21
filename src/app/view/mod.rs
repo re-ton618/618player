@@ -3,6 +3,7 @@ mod library;
 mod playback;
 mod tab_strip;
 mod top_bar;
+mod volume_control;
 mod window_frame;
 mod workspace;
 
