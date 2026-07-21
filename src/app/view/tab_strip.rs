@@ -22,7 +22,7 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
     let targets = mouse_area(open_tabs).on_exit(Message::Tabs(TabMessage::DragLeftStrip));
 
     container(
-        row![targets, add_tab_menu::view(), space().width(Fill)]
+        row![targets, add_tab_menu::view(), rule::vertical(1).style(theme::divider_style), space().width(Fill)]
             .spacing(0)
             .width(Fill)
             .height(Fill),
