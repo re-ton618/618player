@@ -1,4 +1,4 @@
-use iced::widget::{column, container, row, rule, text};
+use iced::widget::{column, container, row, rule, space, text};
 use iced::{Center, Element, Fill};
 
 use super::{library, tab_strip};
@@ -15,6 +15,10 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
         Some(Kind::SongInformation) => {
             placeholder("SONG INFORMATION", "Song details will appear here.")
         }
+        Some(Kind::Settings) => container(space())
+            .width(Fill)
+            .height(Fill)
+            .into(),
         None => placeholder("NO TABS OPEN", "Use + to open a tab."),
     };
 

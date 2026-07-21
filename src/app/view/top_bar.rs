@@ -2,13 +2,30 @@ use iced::widget::{button, container, mouse_area, row, rule, space, text, text_i
 use iced::{Center, Element, Fill, Length, Theme};
 
 use super::TOP_BAR_HEIGHT;
+use crate::app::tabs::{Kind, Message as TabMessage};
 use crate::app::{App, Message};
 use crate::theme;
 
 const WINDOW_BUTTON_SIZE: f32 = TOP_BAR_HEIGHT - 2.0 * theme::CHROME_BORDER_WIDTH;
+const FILE_BUTTON_WIDTH: f32 = 56.0;
 
 pub(super) fn view(app: &App) -> Element<'_, Message> {
-    let leading_space = space().width(Length::FillPortion(1)).height(Fill);
+    let quick_access = row![
+        chrome_button(
+            "File",
+            Message::FileMenuPressed,
+            theme::window_button_style,
+        )
+        .width(FILE_BUTTON_WIDTH),
+        rule::vertical(1).style(theme::border_style),
+        chrome_button(
+            "⚙",
+            Message::Tabs(TabMessage::Open(Kind::Settings)),
+            theme::window_button_style,
+        ),
+        rule::vertical(1).style(theme::border_style),
+    ]
+    .height(Fill);
 
     let search = text_input("Search tracks, artists, albums", &app.search_query)
         .on_input(Message::SearchChanged)
@@ -25,11 +42,11 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
 
     let window_controls = row![
         rule::vertical(1).style(theme::border_style),
-        window_button("-", Message::WindowMinimized, theme::window_button_style),
+        chrome_button("-", Message::WindowMinimized, theme::window_button_style),
         rule::vertical(1).style(theme::border_style),
-        window_button("[]", Message::WindowMaximized, theme::window_button_style),
+        chrome_button("[]", Message::WindowMaximized, theme::window_button_style),
         rule::vertical(1).style(theme::border_style),
-        window_button("×", Message::WindowClosed, theme::close_button_style),
+        chrome_button("×", Message::WindowClosed, theme::close_button_style),
     ]
     .height(Fill);
 
@@ -40,7 +57,8 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
 
     let bar = container(
         row![
-            leading_space,
+            quick_access,
+            space().width(Length::FillPortion(1)).height(Fill),
             rule::vertical(1).style(theme::border_style),
             search_region,
             rule::vertical(1).style(theme::border_style),
@@ -58,7 +76,7 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
     mouse_area(bar).on_press(Message::WindowDragged).into()
 }
 
-fn window_button<'a>(
+fn chrome_button<'a>(
     label: &'a str,
     message: Message,
     style: fn(&Theme, button::Status) -> button::Style,

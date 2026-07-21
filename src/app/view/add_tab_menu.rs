@@ -11,7 +11,12 @@ use crate::app::Message;
 use crate::app::tabs::{Kind, Message as TabMessage};
 use crate::theme;
 
-const OPTIONS: [Kind; 3] = [Kind::Library, Kind::NowPlaying, Kind::SongInformation];
+const OPTIONS: [Kind; 4] = [
+    Kind::Library,
+    Kind::NowPlaying,
+    Kind::SongInformation,
+    Kind::Settings,
+];
 
 pub(super) fn view() -> Element<'static, Message> {
     let trigger = button(

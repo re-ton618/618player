@@ -5,6 +5,7 @@ pub(super) enum Kind {
     Library,
     NowPlaying,
     SongInformation,
+    Settings,
 }
 
 impl Kind {
@@ -13,6 +14,7 @@ impl Kind {
             Self::Library => "Library",
             Self::NowPlaying => "Now Playing",
             Self::SongInformation => "Song Information",
+            Self::Settings => "Settings",
         }
     }
 
@@ -21,6 +23,7 @@ impl Kind {
             Self::Library => "library",
             Self::NowPlaying => "now-playing",
             Self::SongInformation => "song-information",
+            Self::Settings => "settings",
         }
     }
 
@@ -29,6 +32,7 @@ impl Kind {
             "library" => Some(Self::Library),
             "now-playing" => Some(Self::NowPlaying),
             "song-information" => Some(Self::SongInformation),
+            "settings" => Some(Self::Settings),
             _ => None,
         }
     }
@@ -210,11 +214,10 @@ impl State {
         self.order.insert(insertion, source);
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::{Direction, Drag, Kind, Message, Side, State};
-    use Kind::{Library as L, NowPlaying as N, SongInformation as S};
+    use Kind::{Library as L, NowPlaying as N, Settings as G, SongInformation as S};
 
     fn state(order: &[Kind], active: Option<Kind>) -> State {
         State::from_parts(order.to_vec(), active).unwrap()
@@ -265,6 +268,16 @@ mod tests {
         assert_eq!(tabs.active(), Some(L));
         let mut empty = state(&[], None);
         apply!(empty; Message::Cycle(Direction::Forward));
+    }
+
+    #[test]
+    fn open_settings_spawns_once_and_reactivates() {
+        let mut tabs = state(&[L], Some(L));
+        apply!(tabs; Message::Open(G));
+        assert_eq!((tabs.order(), tabs.active()), (&[L, G][..], Some(G)));
+
+        apply!(tabs; Message::Pressed(L), Message::Open(G));
+        assert_eq!((tabs.order(), tabs.active()), (&[L, G][..], Some(G)));
     }
 
     #[test]
