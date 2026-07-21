@@ -26,7 +26,7 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
         rule::vertical(1).style(theme::divider_style),
         window_button("[]", Message::WindowMaximized, theme::window_button_style),
         rule::vertical(1).style(theme::divider_style),
-        window_button("X", Message::WindowClosed, theme::close_button_style),
+        window_button("×", Message::WindowClosed, theme::close_button_style),
     ]
     .height(Fill);
 
@@ -60,11 +60,18 @@ fn window_button<'a>(
     style: fn(&Theme, button::Status) -> button::Style,
 ) -> iced::widget::Button<'a, Message> {
     button(
-        container(text(label).size(12).font(theme::ICON_FONT))
-            .width(Fill)
-            .height(Fill)
-            .center_x(Fill)
-            .center_y(Fill),
+        container(
+            text(label)
+                .size(12)
+                .line_height(1.0)
+                .font(theme::ICON_FONT)
+                .align_x(Center)
+                .align_y(Center),
+        )
+        .width(Fill)
+        .height(Fill)
+        .center_x(Fill)
+        .center_y(Fill),
     )
     .width(35)
     .height(Fill)

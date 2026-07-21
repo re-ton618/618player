@@ -3,12 +3,11 @@ use std::ops::Range;
 use iced::widget::{Button, Column, button, container, row, rule, scrollable, sensor, space, text};
 use iced::{Element, Fill, Length};
 
-use super::{OVERSCAN_ROWS, ROW_HEIGHT, library_scroll_id};
+use super::{HEADER_HEIGHT, OVERSCAN_ROWS, ROW_HEIGHT, library_scroll_id};
 use crate::app::{App, Message};
 use crate::library::{SortColumn, SortDirection, Track};
 use crate::theme;
 
-const HEADER_HEIGHT: f32 = ROW_HEIGHT - 1.0;
 const TITLE_PORTION: u16 = 5;
 const ARTIST_PORTION: u16 = 3;
 const ALBUM_PORTION: u16 = 4;
@@ -19,7 +18,7 @@ const HORIZONTAL_PADDING: f32 = 14.0;
 
 pub(super) fn view(app: &App) -> Element<'_, Message> {
     let track_count = app.visible_tracks.len();
-    let visible = visible_range(track_count, app.scroll_offset, app.library_height);
+    let visible = visible_range(track_count, app.scroll_offset, app.library_viewport_height);
     let mut rows = Column::new().width(Fill);
 
     if visible.start > 0 {
@@ -37,29 +36,24 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
         rows = rows.push(space().height((track_count - visible.end) as f32 * ROW_HEIGHT));
     }
 
-    let library = scrollable(rows)
-        .id(library_scroll_id())
-        .width(Fill)
-        .height(Fill)
-        .on_scroll(Message::Scrolled)
-        .style(theme::scrollable_style);
+    let library = sensor(
+        scrollable(rows)
+            .id(library_scroll_id())
+            .width(Fill)
+            .height(Fill)
+            .on_scroll(Message::LibraryScrolled)
+            .style(theme::scrollable_style),
+    )
+    .on_show(Message::LibraryViewportResized)
+    .on_resize(Message::LibraryViewportResized);
     let content = Column::new()
-        .push(rule::horizontal(1).style(theme::divider_style))
         .push(header(app))
         .push(rule::horizontal(1).style(theme::divider_style))
         .push(library)
         .width(Fill)
         .height(Fill);
 
-    container(
-        sensor(content)
-            .on_show(Message::Resized)
-            .on_resize(Message::Resized),
-    )
-    .width(Fill)
-    .height(Fill)
-    .style(theme::section_style)
-    .into()
+    content.into()
 }
 
 fn header(app: &App) -> Element<'_, Message> {

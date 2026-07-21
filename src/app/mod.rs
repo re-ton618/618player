@@ -1,3 +1,6 @@
+mod input;
+mod tab_store;
+mod tabs;
 mod view;
 
 use std::collections::HashMap;
@@ -15,7 +18,8 @@ pub struct App {
     sort_column: SortColumn,
     sort_direction: SortDirection,
     scroll_offset: f32,
-    library_height: f32,
+    library_viewport_height: f32,
+    tabs: tabs::State,
 }
 
 impl Default for App {
@@ -28,32 +32,38 @@ impl Default for App {
             sort_column: SortColumn::Title,
             sort_direction: SortDirection::Ascending,
             scroll_offset: 0.0,
-            library_height: view::INITIAL_LIBRARY_HEIGHT,
+            library_viewport_height: view::INITIAL_LIBRARY_VIEWPORT_HEIGHT,
+            tabs: tabs::State::default(),
         }
     }
 }
 
+#[allow(private_interfaces)]
 #[derive(Debug, Clone)]
 pub enum Message {
     LibraryEvent(LibraryEvent),
     SearchChanged(String),
     SortChanged(SortColumn),
     TrackPressed(i64),
-    Scrolled(scrollable::Viewport),
-    Resized(Size),
+    LibraryScrolled(scrollable::Viewport),
+    LibraryViewportResized(Size),
     WindowDragged,
     WindowResize(window::Direction),
     WindowMinimized,
     WindowMaximized,
     WindowClosed,
     PlaybackControlPressed,
+    Tabs(tabs::Message),
 }
 
 pub fn new() -> (App, Task<Message>) {
-    (
-        App::default(),
-        Task::run(library::events(), Message::LibraryEvent),
-    )
+    let mut app = App::default();
+    match tab_store::load() {
+        Ok(Some(tabs)) => app.tabs = tabs,
+        Ok(None) => {}
+        Err(error) => eprintln!("Workspace restore failed: {error}"),
+    }
+    (app, Task::run(library::events(), Message::LibraryEvent))
 }
 
 pub fn update(app: &mut App, message: Message) -> Task<Message> {
@@ -103,11 +113,11 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             );
         }
         Message::TrackPressed(_track_id) => {}
-        Message::Scrolled(viewport) => {
+        Message::LibraryScrolled(viewport) => {
             app.scroll_offset = viewport.absolute_offset().y;
-            app.library_height = viewport.bounds().height;
+            app.library_viewport_height = viewport.bounds().height;
         }
-        Message::Resized(size) => app.library_height = size.height,
+        Message::LibraryViewportResized(size) => app.library_viewport_height = size.height,
         Message::WindowDragged => {
             return window::oldest().then(|id| match id {
                 Some(id) => window::drag(id),
@@ -133,12 +143,32 @@ pub fn update(app: &mut App, message: Message) -> Task<Message> {
             });
         }
         Message::WindowClosed => {
+            if let Err(error) = tab_store::save(&app.tabs) {
+                eprintln!("Workspace save failed: {error}");
+            }
             return window::oldest().then(|id| match id {
                 Some(id) => window::close(id),
                 None => Task::none(),
             });
         }
         Message::PlaybackControlPressed => {}
+        Message::Tabs(message) => {
+            let outcome = app.tabs.update(message);
+            if outcome.persist
+                && let Err(error) = tab_store::save(&app.tabs)
+            {
+                eprintln!("Workspace save failed: {error}");
+            }
+            if outcome.library_activated {
+                return iced::widget::operation::scroll_to(
+                    view::library_scroll_id(),
+                    iced::widget::operation::AbsoluteOffset {
+                        x: 0.0,
+                        y: app.scroll_offset,
+                    },
+                );
+            }
+        }
     }
 
     Task::none()
@@ -172,4 +202,8 @@ pub fn view(app: &App) -> Element<'_, Message> {
 
 pub fn theme(_app: &App) -> Theme {
     crate::theme::active()
+}
+
+pub fn subscription(_app: &App) -> iced::Subscription<Message> {
+    input::subscription()
 }

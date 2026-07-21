@@ -53,14 +53,18 @@ pub(crate) fn top_bar_style(_theme: &Theme) -> container::Style {
         })
 }
 
-pub(crate) fn section_style(_theme: &Theme) -> container::Style {
+pub(crate) fn section_fill_style(_theme: &Theme) -> container::Style {
+    container::Style::default().background(SURFACE)
+}
+
+pub(crate) fn tab_strip_style(_theme: &Theme) -> container::Style {
+    container::Style::default().background(SURFACE)
+}
+
+pub(crate) fn tab_style(_theme: &Theme, active: bool) -> container::Style {
     container::Style::default()
-        .background(SURFACE)
-        .border(Border {
-            color: BORDER,
-            width: 1.0,
-            radius: 0.0.into(),
-        })
+        .background(if active { SURFACE_HOVERED } else { SURFACE })
+        .color(if active { TEXT } else { MUTED })
 }
 
 pub(crate) fn progress_track_style(_theme: &Theme) -> container::Style {
@@ -89,6 +93,15 @@ pub(crate) fn muted_text_style(_theme: &Theme) -> container::Style {
 pub(crate) fn divider_style(_theme: &Theme) -> rule::Style {
     rule::Style {
         color: DIVIDER,
+        radius: 0.0.into(),
+        fill_mode: rule::FillMode::Full,
+        snap: true,
+    }
+}
+
+pub(crate) fn border_style(_theme: &Theme) -> rule::Style {
+    rule::Style {
+        color: BORDER,
         radius: 0.0.into(),
         fill_mode: rule::FillMode::Full,
         snap: true,
