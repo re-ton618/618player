@@ -22,6 +22,7 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
         .center_y(Fill);
 
     let window_controls = row![
+        rule::vertical(1).style(theme::divider_style),
         window_button("-", Message::WindowMinimized, theme::window_button_style),
         rule::vertical(1).style(theme::divider_style),
         window_button("[]", Message::WindowMaximized, theme::window_button_style),
@@ -73,7 +74,7 @@ fn window_button<'a>(
         .center_x(Fill)
         .center_y(Fill),
     )
-    .width(35)
+    .width(TOP_BAR_HEIGHT)
     .height(Fill)
     .padding(0)
     .style(style)
