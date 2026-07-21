@@ -1,5 +1,5 @@
-use iced::widget::{button, container, mouse_area, row, rule, space, text, text_input};
-use iced::{Center, Element, Fill, Length, Theme};
+use iced::widget::{button, container, mouse_area, row, rule, space, stack, text, text_input};
+use iced::{Center, Element, Fill, Theme};
 
 use super::TOP_BAR_HEIGHT;
 use crate::app::tabs::{Kind, Message as TabMessage};
@@ -10,6 +10,7 @@ const WINDOW_BUTTON_SIZE: f32 = TOP_BAR_HEIGHT - 2.0 * theme::CHROME_BORDER_WIDT
 const FILE_BUTTON_WIDTH: f32 = 56.0;
 const CHROME_ICON_SIZE: f32 = 12.0;
 const SETTINGS_ICON_SIZE: f32 = CHROME_ICON_SIZE * 2.0;
+const SEARCH_WIDTH: f32 = 300.0;
 
 pub(super) fn view(app: &App) -> Element<'_, Message> {
     let quick_access = row![
@@ -39,10 +40,17 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
         .style(theme::search_style);
 
     let search_region = container(search)
-        .width(300)
+        .width(SEARCH_WIDTH)
         .height(Fill)
         .padding([0, 16])
         .center_y(Fill);
+
+    let search_cluster = row![
+        rule::vertical(1).style(theme::border_style),
+        search_region,
+        rule::vertical(1).style(theme::border_style),
+    ]
+    .height(Fill);
 
     let window_controls = row![
         rule::vertical(1).style(theme::border_style),
@@ -69,23 +77,21 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
     ]
     .height(Fill);
 
-    let actions = row![space().width(Fill), window_controls,]
-        .width(Length::FillPortion(1))
+    let chrome = row![quick_access, space().width(Fill), window_controls,]
+        .width(Fill)
         .height(Fill)
         .align_y(Center);
 
-    let bar = container(
-        row![
-            quick_access,
-            space().width(Length::FillPortion(1)).height(Fill),
-            rule::vertical(1).style(theme::border_style),
-            search_region,
-            rule::vertical(1).style(theme::border_style),
-            actions,
-        ]
+    let centered_search = container(search_cluster)
         .width(Fill)
         .height(Fill)
-        .align_y(Center),
+        .center_x(Fill)
+        .center_y(Fill);
+
+    let bar = container(
+        stack![chrome, centered_search]
+            .width(Fill)
+            .height(Fill),
     )
     .width(Fill)
     .height(TOP_BAR_HEIGHT)
