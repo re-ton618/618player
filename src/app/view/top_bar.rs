@@ -5,6 +5,8 @@ use super::TOP_BAR_HEIGHT;
 use crate::app::{App, Message};
 use crate::theme;
 
+const WINDOW_BUTTON_SIZE: f32 = TOP_BAR_HEIGHT - 2.0 * theme::CHROME_BORDER_WIDTH;
+
 pub(super) fn view(app: &App) -> Element<'_, Message> {
     let leading_space = space().width(Length::FillPortion(1)).height(Fill);
 
@@ -22,11 +24,11 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
         .center_y(Fill);
 
     let window_controls = row![
-        rule::vertical(1).style(theme::divider_style),
+        rule::vertical(1).style(theme::border_style),
         window_button("-", Message::WindowMinimized, theme::window_button_style),
-        rule::vertical(1).style(theme::divider_style),
+        rule::vertical(1).style(theme::border_style),
         window_button("[]", Message::WindowMaximized, theme::window_button_style),
-        rule::vertical(1).style(theme::divider_style),
+        rule::vertical(1).style(theme::border_style),
         window_button("×", Message::WindowClosed, theme::close_button_style),
     ]
     .height(Fill);
@@ -39,9 +41,9 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
     let bar = container(
         row![
             leading_space,
-            rule::vertical(1).style(theme::divider_style),
+            rule::vertical(1).style(theme::border_style),
             search_region,
-            rule::vertical(1).style(theme::divider_style),
+            rule::vertical(1).style(theme::border_style),
             actions,
         ]
         .width(Fill)
@@ -50,6 +52,7 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
     )
     .width(Fill)
     .height(TOP_BAR_HEIGHT)
+    .padding(theme::CHROME_BORDER_WIDTH)
     .style(theme::top_bar_style);
 
     mouse_area(bar).on_press(Message::WindowDragged).into()
@@ -74,7 +77,7 @@ fn window_button<'a>(
         .center_x(Fill)
         .center_y(Fill),
     )
-    .width(TOP_BAR_HEIGHT)
+    .width(WINDOW_BUTTON_SIZE)
     .height(Fill)
     .padding(0)
     .style(style)

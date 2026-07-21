@@ -6,26 +6,31 @@ use super::volume_control;
 use crate::app::{App, Message};
 use crate::theme;
 
-const TRANSPORT_BUTTON_WIDTH: f32 = PLAYBACK_BAR_HEIGHT;
+const SQUARE_SIZE: f32 = PLAYBACK_BAR_HEIGHT - 2.0 * theme::CHROME_BORDER_WIDTH;
+const TRANSPORT_BUTTON_WIDTH: f32 = SQUARE_SIZE;
 const CONTROL_REGION_WIDTH: f32 = TRANSPORT_BUTTON_WIDTH * 3.0 + 3.0 + 53.0;
-const ARTWORK_IMAGE_SIZE: f32 = PLAYBACK_BAR_HEIGHT - 2.0 * theme::ARTWORK_BORDER_WIDTH;
-const SIDE_REGION_WIDTH: f32 = CONTROL_REGION_WIDTH + PLAYBACK_BAR_HEIGHT;
+const SIDE_REGION_WIDTH: f32 = CONTROL_REGION_WIDTH + SQUARE_SIZE + 1.0;
 
 pub(super) fn view(app: &App) -> Element<'_, Message> {
     let controls = row![
         transport_button("|<", theme::transport_button_style),
-        rule::vertical(1).style(theme::divider_style),
+        rule::vertical(1).style(theme::border_style),
         transport_button(">", theme::play_button_style),
-        rule::vertical(1).style(theme::divider_style),
+        rule::vertical(1).style(theme::border_style),
         transport_button(">|", theme::transport_button_style),
-        rule::vertical(1).style(theme::divider_style),
+        rule::vertical(1).style(theme::border_style),
     ]
     .height(Fill);
 
-    let left = row![artwork_cell(app), controls, space().width(Fill)]
-        .width(SIDE_REGION_WIDTH)
-        .height(Fill)
-        .align_y(Center);
+    let left = row![
+        artwork_cell(app),
+        rule::vertical(1).style(theme::border_style),
+        controls,
+        space().width(Fill),
+    ]
+    .width(SIDE_REGION_WIDTH)
+    .height(Fill)
+    .align_y(Center);
 
     let progress = container(
         row![
@@ -47,7 +52,7 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
 
     let right = row![
         space().width(Fill),
-        rule::vertical(1).style(theme::divider_style),
+        rule::vertical(1).style(theme::border_style),
         volume_control::view(app.playback.volume()),
     ]
     .width(SIDE_REGION_WIDTH)
@@ -57,9 +62,9 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
     container(
         row![
             left,
-            rule::vertical(1).style(theme::divider_style),
+            rule::vertical(1).style(theme::border_style),
             progress,
-            rule::vertical(1).style(theme::divider_style),
+            rule::vertical(1).style(theme::border_style),
             right,
         ]
         .width(Fill)
@@ -68,6 +73,7 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
     )
     .width(Fill)
     .height(PLAYBACK_BAR_HEIGHT)
+    .padding(theme::CHROME_BORDER_WIDTH)
     .style(theme::top_bar_style)
     .into()
 }
@@ -80,17 +86,16 @@ fn artwork_cell(app: &App) -> Element<'_, Message> {
             || space().into(),
             |handle| {
                 image(handle.clone())
-                    .width(ARTWORK_IMAGE_SIZE)
-                    .height(ARTWORK_IMAGE_SIZE)
+                    .width(SQUARE_SIZE)
+                    .height(SQUARE_SIZE)
                     .content_fit(ContentFit::Cover)
                     .into()
             },
         );
 
     container(content)
-        .width(PLAYBACK_BAR_HEIGHT)
-        .height(PLAYBACK_BAR_HEIGHT)
-        .padding(theme::ARTWORK_BORDER_WIDTH)
+        .width(SQUARE_SIZE)
+        .height(Fill)
         .style(theme::artwork_placeholder_style)
         .into()
 }

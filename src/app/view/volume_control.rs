@@ -7,7 +7,7 @@ use super::PLAYBACK_BAR_HEIGHT;
 use crate::app::Message;
 use crate::theme;
 
-const BUTTON_SIZE: f32 = PLAYBACK_BAR_HEIGHT;
+const BUTTON_SIZE: f32 = PLAYBACK_BAR_HEIGHT - 2.0 * theme::CHROME_BORDER_WIDTH;
 const POPUP_WIDTH: f32 = BUTTON_SIZE;
 const POPUP_HEIGHT: f32 = 120.0;
 const POPUP_GAP: f32 = 8.0;

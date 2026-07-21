@@ -11,7 +11,7 @@ const MUTED: Color = Color::from_rgb8(143, 147, 154);
 const ACCENT: Color = Color::from_rgb8(211, 235, 111);
 const DANGER: Color = Color::from_rgb8(210, 70, 76);
 
-pub(crate) const ARTWORK_BORDER_WIDTH: f32 = 1.0;
+pub(crate) const CHROME_BORDER_WIDTH: f32 = 1.0;
 pub(crate) const STRONG_FONT: Font = Font {
     weight: font::Weight::Semibold,
     ..Font::DEFAULT
@@ -44,7 +44,7 @@ pub(crate) fn top_bar_style(_theme: &Theme) -> container::Style {
         .background(SURFACE)
         .border(Border {
             color: BORDER,
-            width: 1.0,
+            width: CHROME_BORDER_WIDTH,
             radius: 0.0.into(),
         })
         .shadow(Shadow {
@@ -73,13 +73,7 @@ pub(crate) fn progress_track_style(_theme: &Theme) -> container::Style {
 }
 
 pub(crate) fn artwork_placeholder_style(_theme: &Theme) -> container::Style {
-    container::Style::default()
-        .background(DIVIDER)
-        .border(Border {
-            color: BORDER,
-            width: ARTWORK_BORDER_WIDTH,
-            radius: 0.0.into(),
-        })
+    container::Style::default().background(DIVIDER)
 }
 
 pub(crate) fn scrollable_style(theme: &Theme, status: scrollable::Status) -> scrollable::Style {
