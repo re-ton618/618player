@@ -8,6 +8,8 @@ use crate::theme;
 
 const WINDOW_BUTTON_SIZE: f32 = TOP_BAR_HEIGHT - 2.0 * theme::CHROME_BORDER_WIDTH;
 const FILE_BUTTON_WIDTH: f32 = 56.0;
+const CHROME_ICON_SIZE: f32 = 12.0;
+const SETTINGS_ICON_SIZE: f32 = CHROME_ICON_SIZE * 2.0;
 
 pub(super) fn view(app: &App) -> Element<'_, Message> {
     let quick_access = row![
@@ -15,6 +17,7 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
             "File",
             Message::FileMenuPressed,
             theme::window_button_style,
+            CHROME_ICON_SIZE,
         )
         .width(FILE_BUTTON_WIDTH),
         rule::vertical(1).style(theme::border_style),
@@ -22,6 +25,7 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
             "⚙",
             Message::Tabs(TabMessage::Open(Kind::Settings)),
             theme::window_button_style,
+            SETTINGS_ICON_SIZE,
         ),
         rule::vertical(1).style(theme::border_style),
     ]
@@ -42,11 +46,26 @@ pub(super) fn view(app: &App) -> Element<'_, Message> {
 
     let window_controls = row![
         rule::vertical(1).style(theme::border_style),
-        chrome_button("-", Message::WindowMinimized, theme::window_button_style),
+        chrome_button(
+            "-",
+            Message::WindowMinimized,
+            theme::window_button_style,
+            CHROME_ICON_SIZE,
+        ),
         rule::vertical(1).style(theme::border_style),
-        chrome_button("[]", Message::WindowMaximized, theme::window_button_style),
+        chrome_button(
+            "[]",
+            Message::WindowMaximized,
+            theme::window_button_style,
+            CHROME_ICON_SIZE,
+        ),
         rule::vertical(1).style(theme::border_style),
-        chrome_button("×", Message::WindowClosed, theme::close_button_style),
+        chrome_button(
+            "×",
+            Message::WindowClosed,
+            theme::close_button_style,
+            CHROME_ICON_SIZE,
+        ),
     ]
     .height(Fill);
 
@@ -80,11 +99,12 @@ fn chrome_button<'a>(
     label: &'a str,
     message: Message,
     style: fn(&Theme, button::Status) -> button::Style,
+    icon_size: f32,
 ) -> iced::widget::Button<'a, Message> {
     button(
         container(
             text(label)
-                .size(12)
+                .size(icon_size)
                 .line_height(1.0)
                 .font(theme::ICON_FONT)
                 .align_x(Center)
