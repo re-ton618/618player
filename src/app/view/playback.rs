@@ -1,11 +1,15 @@
-use iced::widget::{button, container, row, rule, space, text};
-use iced::{Center, Element, Fill, Theme};
+use iced::widget::{button, container, image, row, rule, space, text};
+use iced::{Center, ContentFit, Element, Fill, Theme};
 
 use super::PLAYBACK_BAR_HEIGHT;
-use crate::app::Message;
+use crate::app::{App, Message};
 use crate::theme;
 
-pub(super) fn view() -> Element<'static, Message> {
+const CONTROL_REGION_WIDTH: f32 = 188.0;
+const ARTWORK_IMAGE_SIZE: f32 = PLAYBACK_BAR_HEIGHT - 2.0 * theme::ARTWORK_BORDER_WIDTH;
+const SIDE_REGION_WIDTH: f32 = CONTROL_REGION_WIDTH + PLAYBACK_BAR_HEIGHT;
+
+pub(super) fn view(app: &App) -> Element<'_, Message> {
     let controls = row![
         transport_button("|<", theme::transport_button_style),
         rule::vertical(1).style(theme::divider_style),
@@ -16,8 +20,8 @@ pub(super) fn view() -> Element<'static, Message> {
     ]
     .height(Fill);
 
-    let left = row![controls, space().width(Fill)]
-        .width(188)
+    let left = row![artwork_cell(app), controls, space().width(Fill)]
+        .width(SIDE_REGION_WIDTH)
         .height(Fill)
         .align_y(Center);
 
@@ -57,7 +61,7 @@ pub(super) fn view() -> Element<'static, Message> {
             .spacing(12)
             .align_y(Center),
     )
-    .width(188)
+    .width(SIDE_REGION_WIDTH)
     .height(Fill)
     .padding([0, 16])
     .center_y(Fill)
@@ -80,6 +84,29 @@ pub(super) fn view() -> Element<'static, Message> {
     .height(PLAYBACK_BAR_HEIGHT)
     .style(theme::top_bar_style)
     .into()
+}
+
+fn artwork_cell(app: &App) -> Element<'_, Message> {
+    let content: Element<'_, Message> = app
+        .current_track()
+        .and_then(|_| app.playback.artwork_handle())
+        .map_or_else(
+            || space().into(),
+            |handle| {
+                image(handle.clone())
+                    .width(ARTWORK_IMAGE_SIZE)
+                    .height(ARTWORK_IMAGE_SIZE)
+                    .content_fit(ContentFit::Cover)
+                    .into()
+            },
+        );
+
+    container(content)
+        .width(PLAYBACK_BAR_HEIGHT)
+        .height(PLAYBACK_BAR_HEIGHT)
+        .padding(theme::ARTWORK_BORDER_WIDTH)
+        .style(theme::artwork_placeholder_style)
+        .into()
 }
 
 fn transport_button<'a>(

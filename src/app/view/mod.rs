@@ -28,10 +28,14 @@ pub(super) fn library_scroll_id() -> iced::widget::Id {
 
 pub(super) fn view(app: &App) -> Element<'_, Message> {
     let content = container(
-        column![top_bar::view(app), workspace::view(app), playback::view()]
-            .spacing(SECTION_GAP)
-            .width(Fill)
-            .height(Fill),
+        column![
+            top_bar::view(app),
+            workspace::view(app),
+            playback::view(app)
+        ]
+        .spacing(SECTION_GAP)
+        .width(Fill)
+        .height(Fill),
     )
     .padding(DESKTOP_PADDING)
     .width(Fill)

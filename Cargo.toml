@@ -7,7 +7,7 @@ license = "GPL-3.0-only"
 
 [dependencies]
 dirs = "6.0"
-iced = { version = "0.14", default-features = false, features = ["advanced", "crisp", "thread-pool", "tiny-skia", "wayland", "wgpu", "x11"] }
+iced = { version = "0.14", default-features = false, features = ["advanced", "crisp", "image", "thread-pool", "tiny-skia", "wayland", "wgpu", "x11"] }
 lofty = "0.22"
 rusqlite = { version = "0.39", default-features = false, features = ["bundled"] }
 walkdir = "2.5"

@@ -11,6 +11,7 @@ const MUTED: Color = Color::from_rgb8(143, 147, 154);
 const ACCENT: Color = Color::from_rgb8(211, 235, 111);
 const DANGER: Color = Color::from_rgb8(210, 70, 76);
 
+pub(crate) const ARTWORK_BORDER_WIDTH: f32 = 1.0;
 pub(crate) const STRONG_FONT: Font = Font {
     weight: font::Weight::Semibold,
     ..Font::DEFAULT
@@ -69,6 +70,16 @@ pub(crate) fn tab_style(_theme: &Theme, active: bool) -> container::Style {
 
 pub(crate) fn progress_track_style(_theme: &Theme) -> container::Style {
     container::Style::default().background(DIVIDER)
+}
+
+pub(crate) fn artwork_placeholder_style(_theme: &Theme) -> container::Style {
+    container::Style::default()
+        .background(DIVIDER)
+        .border(Border {
+            color: BORDER,
+            width: ARTWORK_BORDER_WIDTH,
+            radius: 0.0.into(),
+        })
 }
 
 pub(crate) fn progress_fill_style(_theme: &Theme) -> container::Style {

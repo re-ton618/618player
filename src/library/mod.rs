@@ -1,15 +1,19 @@
+mod artwork;
 mod cache;
 mod filter;
 mod metadata;
 mod scanner;
 mod track;
 
+#[cfg(test)]
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::task::Poll;
 
 use iced::futures::SinkExt;
 
+pub(crate) use artwork::load_embedded;
 pub(crate) use filter::{SortColumn, SortDirection, matching_track_indices};
 pub(crate) use track::{Track, TrackUpdate};
 
@@ -146,4 +150,25 @@ fn extract_batch(jobs: &[MetadataJob]) -> Vec<TrackUpdate> {
     let mut updates = updates.into_inner().expect("metadata update lock poisoned");
     updates.sort_unstable_by_key(|update| update.id);
     updates
+}
+
+#[cfg(test)]
+pub(crate) fn test_track(id: i64, path: PathBuf, album: Option<&str>) -> Track {
+    Track::from_cache(
+        id,
+        path.clone(),
+        path,
+        1,
+        1,
+        None,
+        format!("Track {id}"),
+        None,
+        album.map(str::to_owned),
+        None,
+        None,
+        None,
+        None,
+        track::MetadataState::Ready,
+        None,
+    )
 }
