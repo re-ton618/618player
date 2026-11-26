@@ -10,6 +10,7 @@ mod tab_strip;
 mod top_bar;
 mod track_list;
 mod volume_control;
+#[cfg(not(target_os = "macos"))]
 mod window_frame;
 mod workspace;
 
@@ -33,11 +34,11 @@ const WINDOW_PADDING: f32 = 8.0;
 const REGION_GAP: f32 = 8.0;
 
 /// The main window's content: the top bar, the workspace and the playback
-/// bar, over the edges that resize the frameless window. Every scroll
-/// view in it draws the app's bar.
+/// bar, over the edges that resize the frameless window (macOS resizes its
+/// framed one itself). Every scroll view in it draws the app's bar.
 pub(crate) fn root() -> impl IntoElement {
     crate::ui::use_app_scrollbars();
-    view()
+    let root = view()
         .flex_1()
         .bg(move || theme().background)
         .text_color(move || theme().foreground)
@@ -50,7 +51,8 @@ pub(crate) fn root() -> impl IntoElement {
                 .child(top_bar::top_bar())
                 .child(workspace::workspace())
                 .child(playback::playback_bar()),
-        )
-        .child(window_frame::resize_edges())
-        .child(playlist_prompt::playlist_prompt())
+        );
+    #[cfg(not(target_os = "macos"))]
+    let root = root.child(window_frame::resize_edges());
+    root.child(playlist_prompt::playlist_prompt())
 }

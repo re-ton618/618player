@@ -6,7 +6,10 @@ use nsh_core::prelude::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Icon {
     Settings,
+    /// The window buttons the app draws (none on macOS).
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     Minimize,
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     Maximize,
     Close,
     Add,

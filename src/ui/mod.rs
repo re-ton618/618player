@@ -46,9 +46,11 @@ pub(crate) enum Tone {
     Accent,
     /// …the destructive color (close, remove).
     Danger,
-    /// …the warning color (the minimize button).
+    /// …the warning color (the minimize button; none on macOS).
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     Warning,
-    /// …the success color (the maximize button).
+    /// …the success color (the maximize button; none on macOS).
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     Success,
 }
 

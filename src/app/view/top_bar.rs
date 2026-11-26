@@ -1,13 +1,20 @@
 use nsh_base::{input, theme};
+#[cfg(not(target_os = "macos"))]
 use nsh_core::desktop::WindowControl;
+#[cfg(target_os = "macos")]
+use nsh_core::element::desktop::title_bar;
 use nsh_core::prelude::*;
 
 use super::{BAR_CELL_WIDTH, BAR_ICON_SIZE, TOP_BAR_HEIGHT};
 use crate::app::store::store;
 use crate::app::tabs::{Kind, Message as TabMessage};
 use crate::app::Message;
+#[cfg(target_os = "macos")]
+use crate::settings::TRAFFIC_LIGHTS_CELL_WIDTH;
 use crate::theme as tokens;
-use crate::ui::{bar_menu, chrome_button, chrome_glyph, chrome_text_glyph, menu_row, Icon, Tone};
+#[cfg(not(target_os = "macos"))]
+use crate::ui::chrome_glyph;
+use crate::ui::{bar_menu, chrome_button, chrome_text_glyph, menu_row, Icon, Tone};
 
 /// The search cell, its edges included.
 const SEARCH_WIDTH: f32 = 300.0;
@@ -17,23 +24,18 @@ const SEARCH_ICON_GAP: f32 = 6.0;
 const SEARCH_TEXT_SIZE: f32 = 11.0;
 
 /// The window's title bar: quick access on the left, the search centered,
-/// the window buttons on the right. Its background drags the window.
+/// the window buttons on the right (macOS: the system's traffic lights, on
+/// the left). Its background drags the window.
 /// Leading cells own their right edge, the search both, and trailing cells
 /// their left, so every seam is one line.
 pub(super) fn top_bar() -> impl IntoElement {
     let store = store();
     let border = move || theme().border;
-    let window_button = |icon, label, tone, control| {
-        chrome_glyph(icon, BAR_ICON_SIZE, label, tone)
-            .w(px(BAR_CELL_WIDTH))
-            .border_l_1()
-            .border_color(border)
-            .window_control(control)
-    };
 
     let quick_access = view()
         .flex_row()
         .h_full()
+        .child(traffic_lights_room())
         .child(
             bar_menu(chrome_text_glyph("File").border_r_1().border_color(border))
                 .child(menu_row("Add Folder to Library…", move || {
@@ -52,28 +54,6 @@ pub(super) fn top_bar() -> impl IntoElement {
             .border_r_1()
             .border_color(border),
         );
-
-    let window_controls = view()
-        .flex_row()
-        .h_full()
-        .child(window_button(
-            Icon::Minimize,
-            "Minimize",
-            Tone::Warning,
-            WindowControl::Minimize,
-        ))
-        .child(window_button(
-            Icon::Maximize,
-            "Maximize",
-            Tone::Success,
-            WindowControl::Maximize,
-        ))
-        .child(window_button(
-            Icon::Close,
-            "Close",
-            Tone::Danger,
-            WindowControl::Close,
-        ));
 
     let query = store.select(|model| model.search_query.clone());
     let search = input()
@@ -128,6 +108,75 @@ pub(super) fn top_bar() -> impl IntoElement {
         .window_drag(true)
         .child(quick_access)
         .child(view().flex_1())
-        .child(window_controls)
+        .child(window_controls())
         .child(centered_search)
+}
+
+/// The cell macOS draws its traffic lights centered in
+/// ([`crate::settings`] places them), with its own right edge. In full
+/// screen, where the title bar is the system's, it closes up.
+#[cfg(target_os = "macos")]
+fn traffic_lights_room() -> View {
+    let shown = move || title_bar().left.0 > 0.0;
+    view()
+        .h_full()
+        .w(move || {
+            px(if shown() {
+                TRAFFIC_LIGHTS_CELL_WIDTH
+            } else {
+                0.0
+            })
+        })
+        .border_r_1()
+        .border_color(move || {
+            if shown() {
+                theme().border
+            } else {
+                theme().card
+            }
+        })
+}
+
+#[cfg(not(target_os = "macos"))]
+fn traffic_lights_room() -> View {
+    view()
+}
+
+/// The window buttons the app draws: macOS shows its traffic lights instead.
+#[cfg(target_os = "macos")]
+fn window_controls() -> View {
+    view()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn window_controls() -> View {
+    let border = move || theme().border;
+    let window_button = |icon, label, tone, control| {
+        chrome_glyph(icon, BAR_ICON_SIZE, label, tone)
+            .w(px(BAR_CELL_WIDTH))
+            .border_l_1()
+            .border_color(border)
+            .window_control(control)
+    };
+    view()
+        .flex_row()
+        .h_full()
+        .child(window_button(
+            Icon::Minimize,
+            "Minimize",
+            Tone::Warning,
+            WindowControl::Minimize,
+        ))
+        .child(window_button(
+            Icon::Maximize,
+            "Maximize",
+            Tone::Success,
+            WindowControl::Maximize,
+        ))
+        .child(window_button(
+            Icon::Close,
+            "Close",
+            Tone::Danger,
+            WindowControl::Close,
+        ))
 }
