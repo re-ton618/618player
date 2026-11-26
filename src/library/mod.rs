@@ -9,11 +9,8 @@ mod track;
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::task::Poll;
 
-use iced::futures::SinkExt;
-
-pub(crate) use artwork::load_embedded;
+pub(crate) use artwork::load_embedded_data_uri;
 pub(crate) use filter::{SortColumn, SortDirection, matching_track_indices};
 pub(crate) use track::{Track, TrackUpdate};
 
@@ -32,90 +29,58 @@ pub(crate) enum LibraryEvent {
     Failed(String),
 }
 
-pub(crate) fn events() -> impl iced::futures::Stream<Item = LibraryEvent> {
-    iced::stream::channel(
-        8,
-        |mut output: iced::futures::channel::mpsc::Sender<LibraryEvent>| async move {
-            let mut cache = match Cache::open() {
-                Ok(cache) => cache,
-                Err(error) => {
-                    let _ = output.send(LibraryEvent::Failed(error.to_string())).await;
-                    return;
-                }
-            };
-            let cached = match cache.load_tracks() {
-                Ok(tracks) => tracks,
-                Err(error) => {
-                    let _ = output.send(LibraryEvent::Failed(error.to_string())).await;
-                    return;
-                }
-            };
-
-            if output
-                .send(LibraryEvent::Cached(cached.clone()))
-                .await
-                .is_err()
-            {
-                return;
-            }
-            yield_once().await;
-
-            let discovered = match scanner::scan_music_directory() {
-                Ok(discovered) => discovered,
-                Err(error) => {
-                    let _ = output.send(LibraryEvent::Failed(error)).await;
-                    return;
-                }
-            };
-            let prepared = match cache.prepare_scan(discovered, &cached) {
-                Ok(prepared) => prepared,
-                Err(error) => {
-                    let _ = output.send(LibraryEvent::Failed(error.to_string())).await;
-                    return;
-                }
-            };
-            if output
-                .send(LibraryEvent::Reconciled(prepared.tracks))
-                .await
-                .is_err()
-            {
-                return;
-            }
-            yield_once().await;
-
-            for jobs in prepared.metadata_jobs.chunks(METADATA_BATCH_SIZE) {
-                let updates = extract_batch(jobs);
-                if let Err(error) = cache.store_updates(&updates) {
-                    let _ = output.send(LibraryEvent::Failed(error.to_string())).await;
-                    return;
-                }
-                if output
-                    .send(LibraryEvent::MetadataBatch(updates))
-                    .await
-                    .is_err()
-                {
-                    return;
-                }
-                yield_once().await;
-            }
-
-            let _ = output.send(LibraryEvent::Complete).await;
-        },
-    )
-}
-
-async fn yield_once() {
-    let mut yielded = false;
-    iced::futures::future::poll_fn(move |context| {
-        if yielded {
-            Poll::Ready(())
-        } else {
-            yielded = true;
-            context.waker().wake_by_ref();
-            Poll::Pending
+/// Indexes the music directory, reporting each stage through `emit`; stops
+/// early once `emit` returns false (nobody listens any more). Blocking: run
+/// it on its own thread.
+pub(crate) fn index(mut emit: impl FnMut(LibraryEvent) -> bool) {
+    let mut cache = match Cache::open() {
+        Ok(cache) => cache,
+        Err(error) => {
+            emit(LibraryEvent::Failed(error.to_string()));
+            return;
         }
-    })
-    .await;
+    };
+    let cached = match cache.load_tracks() {
+        Ok(tracks) => tracks,
+        Err(error) => {
+            emit(LibraryEvent::Failed(error.to_string()));
+            return;
+        }
+    };
+    if !emit(LibraryEvent::Cached(cached.clone())) {
+        return;
+    }
+
+    let discovered = match scanner::scan_music_directory() {
+        Ok(discovered) => discovered,
+        Err(error) => {
+            emit(LibraryEvent::Failed(error));
+            return;
+        }
+    };
+    let prepared = match cache.prepare_scan(discovered, &cached) {
+        Ok(prepared) => prepared,
+        Err(error) => {
+            emit(LibraryEvent::Failed(error.to_string()));
+            return;
+        }
+    };
+    if !emit(LibraryEvent::Reconciled(prepared.tracks)) {
+        return;
+    }
+
+    for jobs in prepared.metadata_jobs.chunks(METADATA_BATCH_SIZE) {
+        let updates = extract_batch(jobs);
+        if let Err(error) = cache.store_updates(&updates) {
+            emit(LibraryEvent::Failed(error.to_string()));
+            return;
+        }
+        if !emit(LibraryEvent::MetadataBatch(updates)) {
+            return;
+        }
+    }
+
+    emit(LibraryEvent::Complete);
 }
 
 fn extract_batch(jobs: &[MetadataJob]) -> Vec<TrackUpdate> {

@@ -1,101 +1,36 @@
-use iced::widget::{container, mouse_area, space, stack};
-use iced::{Element, Fill, Length, alignment, mouse, window};
-
-use crate::app::Message;
+use nsh_core::desktop::ResizeEdge;
+use nsh_core::prelude::*;
 
 const RESIZE_HANDLE_SIZE: f32 = 6.0;
 
-pub(super) fn view(content: Element<'_, Message>) -> Element<'_, Message> {
-    use window::Direction;
-
-    stack([
-        content,
-        resize_handle(Direction::North),
-        resize_handle(Direction::South),
-        resize_handle(Direction::East),
-        resize_handle(Direction::West),
-        resize_handle(Direction::NorthEast),
-        resize_handle(Direction::NorthWest),
-        resize_handle(Direction::SouthEast),
-        resize_handle(Direction::SouthWest),
-    ])
-    .width(Fill)
-    .height(Fill)
-    .into()
+/// Invisible strips along the edges and corners that resize the window.
+pub(super) fn resize_edges() -> [View; 8] {
+    use ResizeEdge::*;
+    [
+        Top,
+        Bottom,
+        Left,
+        Right,
+        TopLeft,
+        TopRight,
+        BottomLeft,
+        BottomRight,
+    ]
+    .map(edge)
 }
 
-fn resize_handle(direction: window::Direction) -> Element<'static, Message> {
-    use alignment::{Horizontal, Vertical};
-    use mouse::Interaction;
-    use window::Direction;
-
-    let (width, height, horizontal, vertical, interaction) = match direction {
-        Direction::North => (
-            Length::Fill,
-            Length::Fixed(RESIZE_HANDLE_SIZE),
-            Horizontal::Center,
-            Vertical::Top,
-            Interaction::ResizingVertically,
-        ),
-        Direction::South => (
-            Length::Fill,
-            Length::Fixed(RESIZE_HANDLE_SIZE),
-            Horizontal::Center,
-            Vertical::Bottom,
-            Interaction::ResizingVertically,
-        ),
-        Direction::East => (
-            Length::Fixed(RESIZE_HANDLE_SIZE),
-            Length::Fill,
-            Horizontal::Right,
-            Vertical::Center,
-            Interaction::ResizingHorizontally,
-        ),
-        Direction::West => (
-            Length::Fixed(RESIZE_HANDLE_SIZE),
-            Length::Fill,
-            Horizontal::Left,
-            Vertical::Center,
-            Interaction::ResizingHorizontally,
-        ),
-        Direction::NorthEast => (
-            Length::Fixed(RESIZE_HANDLE_SIZE),
-            Length::Fixed(RESIZE_HANDLE_SIZE),
-            Horizontal::Right,
-            Vertical::Top,
-            Interaction::ResizingDiagonallyUp,
-        ),
-        Direction::NorthWest => (
-            Length::Fixed(RESIZE_HANDLE_SIZE),
-            Length::Fixed(RESIZE_HANDLE_SIZE),
-            Horizontal::Left,
-            Vertical::Top,
-            Interaction::ResizingDiagonallyDown,
-        ),
-        Direction::SouthEast => (
-            Length::Fixed(RESIZE_HANDLE_SIZE),
-            Length::Fixed(RESIZE_HANDLE_SIZE),
-            Horizontal::Right,
-            Vertical::Bottom,
-            Interaction::ResizingDiagonallyDown,
-        ),
-        Direction::SouthWest => (
-            Length::Fixed(RESIZE_HANDLE_SIZE),
-            Length::Fixed(RESIZE_HANDLE_SIZE),
-            Horizontal::Left,
-            Vertical::Bottom,
-            Interaction::ResizingDiagonallyUp,
-        ),
-    };
-
-    container(
-        mouse_area(space().width(width).height(height))
-            .on_press(Message::WindowResize(direction))
-            .interaction(interaction),
-    )
-    .width(Fill)
-    .height(Fill)
-    .align_x(horizontal)
-    .align_y(vertical)
-    .into()
+fn edge(edge: ResizeEdge) -> View {
+    let handle = px(RESIZE_HANDLE_SIZE);
+    let zero = px(0.0);
+    let v = view().absolute().window_resize(edge);
+    match edge {
+        ResizeEdge::Top => v.top(zero).left(zero).right(zero).h(handle),
+        ResizeEdge::Bottom => v.bottom(zero).left(zero).right(zero).h(handle),
+        ResizeEdge::Left => v.left(zero).top(zero).bottom(zero).w(handle),
+        ResizeEdge::Right => v.right(zero).top(zero).bottom(zero).w(handle),
+        ResizeEdge::TopLeft => v.top(zero).left(zero).w(handle).h(handle),
+        ResizeEdge::TopRight => v.top(zero).right(zero).w(handle).h(handle),
+        ResizeEdge::BottomLeft => v.bottom(zero).left(zero).w(handle).h(handle),
+        ResizeEdge::BottomRight => v.bottom(zero).right(zero).w(handle).h(handle),
+    }
 }

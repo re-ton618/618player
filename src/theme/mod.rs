@@ -1,223 +1,53 @@
-use iced::widget::{button, container, rule, scrollable, slider, text_input};
-use iced::{Background, Border, Color, Font, Shadow, Theme, Vector, font, theme};
+//! The app's design tokens: `theme.json` (shadcn `cssVars`), drawn through
+//! `nsh_base::theme()`, and the app's own tokens by name.
 
-const BACKGROUND: Color = Color::from_rgb8(13, 14, 16);
-const SURFACE: Color = Color::from_rgb8(23, 25, 28);
-const SURFACE_HOVERED: Color = Color::from_rgb8(34, 37, 41);
-const BORDER: Color = Color::from_rgb8(48, 51, 56);
-const DIVIDER: Color = Color::from_rgb8(34, 37, 41);
-const TEXT: Color = Color::from_rgb8(239, 237, 231);
-const MUTED: Color = Color::from_rgb8(143, 147, 154);
-const ACCENT: Color = Color::from_rgb8(211, 235, 111);
-const DANGER: Color = Color::from_rgb8(210, 70, 76);
+use nsh_base::theme;
+use nsh_core::prelude::*;
+
+/// The theme file, also named by `nsh.json`'s `"theme"`.
+const THEME_JSON: &str = include_str!("../../theme.json");
 
 pub(crate) const CHROME_BORDER_WIDTH: f32 = 1.0;
-pub(crate) const STRONG_FONT: Font = Font {
-    weight: font::Weight::Semibold,
-    ..Font::DEFAULT
-};
-pub(crate) const ICON_FONT: Font = Font {
-    weight: font::Weight::Semibold,
-    ..Font::MONOSPACE
-};
 
-pub(crate) fn active() -> Theme {
-    Theme::custom(
-        "618",
-        theme::Palette {
-            background: BACKGROUND,
-            text: TEXT,
-            primary: ACCENT,
-            success: Color::from_rgb8(116, 190, 141),
-            warning: Color::from_rgb8(224, 174, 88),
-            danger: DANGER,
-        },
-    )
-}
-
-pub(crate) fn root_style(_theme: &Theme) -> container::Style {
-    container::Style::default().background(BACKGROUND)
-}
-
-pub(crate) fn top_bar_style(_theme: &Theme) -> container::Style {
-    container::Style::default()
-        .background(SURFACE)
-        .border(Border {
-            color: BORDER,
-            width: CHROME_BORDER_WIDTH,
-            radius: 0.0.into(),
-        })
-        .shadow(Shadow {
-            color: Color::from_rgba8(0, 0, 0, 0.35),
-            offset: Vector::new(0.0, 4.0),
-            blur_radius: 14.0,
-        })
-}
-
-pub(crate) fn section_fill_style(_theme: &Theme) -> container::Style {
-    container::Style::default().background(SURFACE)
-}
-
-pub(crate) fn tab_strip_style(_theme: &Theme) -> container::Style {
-    container::Style::default().background(SURFACE)
-}
-
-pub(crate) fn tab_style(_theme: &Theme, active: bool) -> container::Style {
-    container::Style::default()
-        .background(if active { SURFACE_HOVERED } else { SURFACE })
-        .color(if active { TEXT } else { MUTED })
-}
-
-pub(crate) fn progress_track_style(_theme: &Theme) -> container::Style {
-    container::Style::default().background(DIVIDER)
-}
-
-pub(crate) fn artwork_placeholder_style(_theme: &Theme) -> container::Style {
-    container::Style::default().background(DIVIDER)
-}
-
-pub(crate) fn scrollable_style(theme: &Theme, status: scrollable::Status) -> scrollable::Style {
-    let mut style = scrollable::default(theme, status);
-    style.container.border.radius = 0.0.into();
-    style.vertical_rail.border.radius = 0.0.into();
-    style.vertical_rail.scroller.border.radius = 0.0.into();
-    style.horizontal_rail.border.radius = 0.0.into();
-    style.horizontal_rail.scroller.border.radius = 0.0.into();
-    style.auto_scroll.border.radius = 0.0.into();
-    style
-}
-
-pub(crate) fn muted_text_style(_theme: &Theme) -> container::Style {
-    container::Style::default().color(MUTED)
-}
-
-pub(crate) fn divider_style(_theme: &Theme) -> rule::Style {
-    rule::Style {
-        color: DIVIDER,
-        radius: 0.0.into(),
-        fill_mode: rule::FillMode::Full,
-        snap: true,
+/// Draws the app with `theme.json`, however it was started (`cargo run`
+/// reads no `nsh.json`).
+pub(crate) fn install() {
+    set_color_scheme(Appearance::Dark);
+    match nsh_base::tokens_of(Some(THEME_JSON)) {
+        Ok(tokens) => set_tokens(tokens),
+        Err(error) => eprintln!("Theme failed: {error}"),
     }
 }
 
-pub(crate) fn border_style(_theme: &Theme) -> rule::Style {
-    rule::Style {
-        color: BORDER,
-        radius: 0.0.into(),
-        fill_mode: rule::FillMode::Full,
-        snap: true,
-    }
+/// Lines between rows and tabs: quieter than `border`.
+pub(crate) fn divider() -> AdaptiveColor {
+    let theme = theme();
+    theme.color("divider").unwrap_or(theme.destructive)
 }
 
-pub(crate) fn search_style(_theme: &Theme, _status: text_input::Status) -> text_input::Style {
-    text_input::Style {
-        background: Background::Color(Color::TRANSPARENT),
-        border: Border::default(),
-        icon: MUTED,
-        placeholder: MUTED,
-        value: TEXT,
-        selection: Color { a: 0.35, ..ACCENT },
-    }
+/// A hovered library row.
+pub(crate) fn row_hover() -> AdaptiveColor {
+    let theme = theme();
+    theme.color("row-hover").unwrap_or(theme.destructive)
 }
 
-pub(crate) fn header_button_style(_theme: &Theme, status: button::Status) -> button::Style {
-    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-
-    button::Style {
-        text_color: if hovered { TEXT } else { MUTED },
-        ..button::Style::default()
-    }
+/// Glyphs on a hovered close button.
+pub(crate) fn destructive_foreground() -> AdaptiveColor {
+    let theme = theme();
+    theme
+        .color("destructive-foreground")
+        .unwrap_or(theme.foreground)
 }
 
-pub(crate) fn track_row_style(_theme: &Theme, status: button::Status) -> button::Style {
-    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
+#[cfg(test)]
+mod tests {
+    use super::THEME_JSON;
 
-    button::Style {
-        background: hovered.then_some(Background::Color(Color::from_rgb8(29, 32, 36))),
-        text_color: TEXT,
-        ..button::Style::default()
-    }
-}
-
-pub(crate) fn window_button_style(_theme: &Theme, status: button::Status) -> button::Style {
-    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-
-    button::Style {
-        background: hovered.then_some(Background::Color(SURFACE_HOVERED)),
-        text_color: if hovered { TEXT } else { MUTED },
-        ..button::Style::default()
-    }
-}
-
-pub(crate) fn close_button_style(_theme: &Theme, status: button::Status) -> button::Style {
-    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-
-    button::Style {
-        background: hovered.then_some(Background::Color(DANGER)),
-        text_color: if hovered { Color::WHITE } else { MUTED },
-        ..button::Style::default()
-    }
-}
-
-pub(crate) fn transport_button_style(_theme: &Theme, status: button::Status) -> button::Style {
-    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-
-    button::Style {
-        background: hovered.then_some(Background::Color(SURFACE_HOVERED)),
-        text_color: if hovered { TEXT } else { MUTED },
-        ..button::Style::default()
-    }
-}
-
-pub(crate) fn play_button_style(_theme: &Theme, status: button::Status) -> button::Style {
-    let hovered = matches!(status, button::Status::Hovered | button::Status::Pressed);
-
-    button::Style {
-        background: hovered.then_some(Background::Color(SURFACE_HOVERED)),
-        text_color: ACCENT,
-        ..button::Style::default()
-    }
-}
-
-pub(crate) fn volume_popup_style(_theme: &Theme) -> container::Style {
-    container::Style::default()
-        .background(SURFACE)
-        .border(Border {
-            color: BORDER,
-            width: 1.0,
-            radius: 0.0.into(),
-        })
-        .shadow(Shadow {
-            color: Color::from_rgba8(0, 0, 0, 0.35),
-            offset: Vector::new(0.0, 4.0),
-            blur_radius: 14.0,
-        })
-}
-
-pub(crate) fn volume_slider_style(_theme: &Theme, status: slider::Status) -> slider::Style {
-    let active = matches!(
-        status,
-        slider::Status::Hovered | slider::Status::Dragged
-    );
-
-    slider::Style {
-        rail: slider::Rail {
-            backgrounds: (Background::Color(ACCENT), Background::Color(DIVIDER)),
-            width: 3.0,
-            border: Border {
-                radius: 0.0.into(),
-                width: 0.0,
-                color: Color::TRANSPARENT,
-            },
-        },
-        handle: slider::Handle {
-            shape: slider::HandleShape::Rectangle {
-                width: 2,
-                border_radius: 0.0.into(),
-            },
-            background: Background::Color(if active { TEXT } else { ACCENT }),
-            border_width: 0.0,
-            border_color: Color::TRANSPARENT,
-        },
+    #[test]
+    fn theme_file_parses_with_the_app_tokens() {
+        let theme = nsh_base::Theme::from_json(THEME_JSON).expect("theme.json parses");
+        for token in ["divider", "row-hover", "destructive-foreground"] {
+            assert!(theme.color(token).is_some(), "{token}");
+        }
     }
 }

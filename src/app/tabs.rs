@@ -1,6 +1,6 @@
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum Kind {
     Library,
     NowPlaying,
@@ -68,11 +68,13 @@ pub(super) enum Message {
     CloseActive,
 }
 
+#[derive(Clone)]
 struct Drag {
     source: Kind,
     target: Option<(Kind, Side)>,
 }
 
+#[derive(Clone)]
 pub(super) struct State {
     order: Vec<Kind>,
     active: Option<Kind>,
@@ -82,7 +84,6 @@ pub(super) struct State {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Outcome {
     pub(super) persist: bool,
-    pub(super) library_activated: bool,
 }
 
 impl Default for State {
@@ -172,8 +173,6 @@ impl State {
 
         Outcome {
             persist: self.order != old_order || self.active != old_active,
-            library_activated: old_active != Some(Kind::Library)
-                && self.active == Some(Kind::Library),
         }
     }
 
@@ -228,8 +227,6 @@ mod tests {
         let outcome = state.update(message);
         let changed = before != (state.order.clone(), state.active);
         assert_eq!(outcome.persist, changed);
-        let library_activated = before.1 != Some(L) && state.active == Some(L);
-        assert_eq!(outcome.library_activated, library_activated);
     }
 
     fn over(target: Kind, side: Side) -> Message {

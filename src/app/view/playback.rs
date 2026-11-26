@@ -1,126 +1,100 @@
-use iced::widget::{button, container, image, row, rule, space, text};
-use iced::{Center, ContentFit, Element, Fill, Theme};
+use nsh_base::theme;
+use nsh_core::element::ImageSrc;
+use nsh_core::prelude::*;
 
-use super::PLAYBACK_BAR_HEIGHT;
 use super::volume_control;
-use crate::app::{App, Message};
-use crate::theme;
+use super::PLAYBACK_BAR_HEIGHT;
+use crate::app::store::store;
+use crate::app::Message;
+use crate::theme::CHROME_BORDER_WIDTH;
+use crate::ui::{caption, chrome_button, vertical_rule, Icon, Rule, Tone};
 
-const SQUARE_SIZE: f32 = PLAYBACK_BAR_HEIGHT - 2.0 * theme::CHROME_BORDER_WIDTH;
+const SQUARE_SIZE: f32 = PLAYBACK_BAR_HEIGHT - 2.0 * CHROME_BORDER_WIDTH;
 const TRANSPORT_BUTTON_WIDTH: f32 = SQUARE_SIZE;
 const CONTROL_REGION_WIDTH: f32 = TRANSPORT_BUTTON_WIDTH * 3.0 + 3.0 + 53.0;
 const SIDE_REGION_WIDTH: f32 = CONTROL_REGION_WIDTH + SQUARE_SIZE + 1.0;
+const TRANSPORT_ICON_SIZE: f32 = 12.0;
 
-pub(super) fn view(app: &App) -> Element<'_, Message> {
-    let controls = row![
-        transport_button("|<", theme::transport_button_style),
-        rule::vertical(1).style(theme::border_style),
-        transport_button(">", theme::play_button_style),
-        rule::vertical(1).style(theme::border_style),
-        transport_button(">|", theme::transport_button_style),
-        rule::vertical(1).style(theme::border_style),
-    ]
-    .height(Fill);
+/// The bar under the workspace: artwork and transport on the left, the
+/// progress in the middle, the volume on the right.
+pub(super) fn playback_bar() -> impl IntoElement {
+    let store = store();
+    let transport = move |icon, label, tone| {
+        chrome_button(icon, TRANSPORT_ICON_SIZE, label, tone, move || {
+            store.dispatch(Message::PlaybackControlPressed)
+        })
+        .w(px(TRANSPORT_BUTTON_WIDTH))
+    };
 
-    let left = row![
-        artwork_cell(app),
-        rule::vertical(1).style(theme::border_style),
-        controls,
-        space().width(Fill),
-    ]
-    .width(SIDE_REGION_WIDTH)
-    .height(Fill)
-    .align_y(Center);
+    let left = view()
+        .w(px(SIDE_REGION_WIDTH))
+        .flex_shrink_0()
+        .flex_row()
+        .child(artwork_cell())
+        .child(vertical_rule(Rule::Border))
+        .child(transport(Icon::Previous, "Previous", Tone::Quiet))
+        .child(vertical_rule(Rule::Border))
+        .child(transport(Icon::Play, "Play", Tone::Accent))
+        .child(vertical_rule(Rule::Border))
+        .child(transport(Icon::Next, "Next", Tone::Quiet))
+        .child(vertical_rule(Rule::Border));
 
-    let progress = container(
-        row![
-            text("0:00").size(10).font(theme::STRONG_FONT),
-            container(space())
-                .width(Fill)
-                .height(3)
-                .style(theme::progress_track_style),
-            text("--:--").size(10).font(theme::STRONG_FONT),
-        ]
-        .spacing(12)
-        .align_y(Center),
-    )
-    .width(Fill)
-    .height(Fill)
-    .padding([0, 18])
-    .center_y(Fill)
-    .style(theme::muted_text_style);
+    let muted = move || theme().muted_foreground;
+    let progress = view()
+        .flex_1()
+        .min_w(px(0.0))
+        .flex_row()
+        .items_center()
+        .gap(px(12.0))
+        .px(px(18.0))
+        .child(caption("0:00", 10.0).text_color(muted).tabular_nums())
+        .child(view().flex_1().h(px(3.0)).bg(move || theme().muted))
+        .child(caption("--:--", 10.0).text_color(muted).tabular_nums());
 
-    let right = row![
-        space().width(Fill),
-        rule::vertical(1).style(theme::border_style),
-        volume_control::view(app.playback.volume()),
-    ]
-    .width(SIDE_REGION_WIDTH)
-    .height(Fill)
-    .align_y(Center);
+    let right = view()
+        .w(px(SIDE_REGION_WIDTH))
+        .flex_shrink_0()
+        .flex_row()
+        .justify_end()
+        .child(vertical_rule(Rule::Border))
+        .child(volume_control::volume_control(SQUARE_SIZE));
 
-    container(
-        row![
-            left,
-            rule::vertical(1).style(theme::border_style),
-            progress,
-            rule::vertical(1).style(theme::border_style),
-            right,
-        ]
-        .width(Fill)
-        .height(Fill)
-        .align_y(Center),
-    )
-    .width(Fill)
-    .height(PLAYBACK_BAR_HEIGHT)
-    .padding(theme::CHROME_BORDER_WIDTH)
-    .style(theme::top_bar_style)
-    .into()
+    view()
+        .h(px(PLAYBACK_BAR_HEIGHT))
+        .flex_shrink_0()
+        .flex_row()
+        .p(px(CHROME_BORDER_WIDTH))
+        .bg(move || theme().card)
+        .border_1()
+        .border_color(move || theme().border)
+        .shadow_lg()
+        .child(left)
+        .child(vertical_rule(Rule::Border))
+        .child(progress)
+        .child(vertical_rule(Rule::Border))
+        .child(right)
 }
 
-fn artwork_cell(app: &App) -> Element<'_, Message> {
-    let content: Element<'_, Message> = app
-        .current_track()
-        .and_then(|_| app.playback.artwork_handle())
-        .map_or_else(
-            || space().into(),
-            |handle| {
-                image(handle.clone())
-                    .width(SQUARE_SIZE)
-                    .height(SQUARE_SIZE)
-                    .content_fit(ContentFit::Cover)
-                    .into()
-            },
-        );
-
-    container(content)
-        .width(SQUARE_SIZE)
-        .height(Fill)
-        .style(theme::artwork_placeholder_style)
-        .into()
-}
-
-fn transport_button<'a>(
-    label: &'a str,
-    style: fn(&Theme, button::Status) -> button::Style,
-) -> iced::widget::Button<'a, Message> {
-    button(
-        container(
-            text(label)
-                .size(12)
-                .line_height(1.0)
-                .font(theme::ICON_FONT)
-                .align_x(Center)
-                .align_y(Center),
-        )
-        .width(Fill)
-        .height(Fill)
-        .center_x(Fill)
-        .center_y(Fill),
-    )
-    .width(TRANSPORT_BUTTON_WIDTH)
-    .height(Fill)
-    .padding(0)
-    .style(style)
-    .on_press(Message::PlaybackControlPressed)
+/// The current track's artwork, or an empty square.
+fn artwork_cell() -> impl IntoElement {
+    let store = store();
+    let artwork = store.select(|model| {
+        model
+            .current_track()
+            .and(model.playback.artwork_image())
+            .cloned()
+            .unwrap_or_default()
+    });
+    let shown = computed(move || artwork.with(|uri| !uri.is_empty()));
+    view()
+        .w(px(SQUARE_SIZE))
+        .flex_shrink_0()
+        .bg(move || theme().muted)
+        .child(when(shown, move || {
+            image(move || ImageSrc::from(artwork.get()))
+                .w(px(SQUARE_SIZE))
+                .h(px(SQUARE_SIZE))
+                .object_fit(ResizeMode::Cover)
+                .label("Album artwork")
+        }))
 }

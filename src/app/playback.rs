@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use iced::widget::image;
+use nsh_core::prelude::SharedString;
 
 use crate::library::Track;
 
@@ -24,7 +24,7 @@ enum ArtworkKey {
     Track(PathBuf),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Artwork {
     Empty,
     Reading {
@@ -32,16 +32,10 @@ enum Artwork {
         key: ArtworkKey,
         source: SourceFingerprint,
     },
-    Allocating {
-        request_id: u64,
-        key: ArtworkKey,
-        source: SourceFingerprint,
-        handle: image::Handle,
-    },
     Ready {
         key: ArtworkKey,
         source: SourceFingerprint,
-        allocation: image::Allocation,
+        image: SharedString,
     },
     Missing {
         key: ArtworkKey,
@@ -53,10 +47,9 @@ impl Artwork {
     fn key(&self) -> Option<&ArtworkKey> {
         match self {
             Self::Empty => None,
-            Self::Reading { key, .. }
-            | Self::Allocating { key, .. }
-            | Self::Ready { key, .. }
-            | Self::Missing { key, .. } => Some(key),
+            Self::Reading { key, .. } | Self::Ready { key, .. } | Self::Missing { key, .. } => {
+                Some(key)
+            }
         }
     }
 
@@ -64,7 +57,6 @@ impl Artwork {
         match self {
             Self::Empty => None,
             Self::Reading { source, .. }
-            | Self::Allocating { source, .. }
             | Self::Ready { source, .. }
             | Self::Missing { source, .. } => Some(source),
         }
@@ -73,23 +65,21 @@ impl Artwork {
     fn set_key(&mut self, new_key: ArtworkKey) {
         match self {
             Self::Empty => {}
-            Self::Reading { key, .. }
-            | Self::Allocating { key, .. }
-            | Self::Ready { key, .. }
-            | Self::Missing { key, .. } => *key = new_key,
+            Self::Reading { key, .. } | Self::Ready { key, .. } | Self::Missing { key, .. } => {
+                *key = new_key
+            }
         }
     }
 
-    fn handle(&self) -> Option<&image::Handle> {
+    fn image(&self) -> Option<&SharedString> {
         match self {
-            Self::Allocating { handle, .. } => Some(handle),
-            Self::Ready { allocation, .. } => Some(allocation.handle()),
+            Self::Ready { image, .. } => Some(image),
             Self::Empty | Self::Reading { .. } | Self::Missing { .. } => None,
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(super) struct State {
     current: Option<CurrentTrack>,
     last_request_id: u64,
@@ -116,7 +106,6 @@ pub(super) struct ArtworkRequest {
 
 pub(super) enum ArtworkEffect {
     None,
-    Allocate(image::Handle),
     Load {
         request: ArtworkRequest,
         error: Option<String>,
@@ -143,7 +132,7 @@ impl State {
             let current = self.current.as_ref().expect("current track was just set");
 
             return match &self.artwork {
-                Artwork::Reading { .. } | Artwork::Allocating { .. } | Artwork::Ready { .. }
+                Artwork::Reading { .. } | Artwork::Ready { .. }
                     if self.artwork.key() == Some(&current.key) =>
                 {
                     None
@@ -155,7 +144,6 @@ impl State {
                 }
                 Artwork::Empty
                 | Artwork::Reading { .. }
-                | Artwork::Allocating { .. }
                 | Artwork::Ready { .. }
                 | Artwork::Missing { .. } => Some(self.read_current()),
             };
@@ -184,8 +172,9 @@ impl State {
         self.current.as_ref().map(|current| current.track_id)
     }
 
-    pub(super) fn artwork_handle(&self) -> Option<&image::Handle> {
-        self.artwork.handle()
+    /// The current track's artwork, as a `data:` URI.
+    pub(super) fn artwork_image(&self) -> Option<&SharedString> {
+        self.artwork.image()
     }
 
     pub(super) fn volume(&self) -> u8 {
@@ -202,7 +191,7 @@ impl State {
     pub(super) fn loaded(
         &mut self,
         request_id: u64,
-        result: Result<Option<image::Handle>, String>,
+        result: Result<Option<SharedString>, String>,
     ) -> ArtworkEffect {
         let Artwork::Reading {
             request_id: active_request_id,
@@ -219,50 +208,12 @@ impl State {
         let key = key.clone();
         let source = source.clone();
         match result {
-            Ok(Some(handle)) => {
-                self.artwork = Artwork::Allocating {
-                    request_id,
-                    key,
-                    source,
-                    handle: handle.clone(),
-                };
-                ArtworkEffect::Allocate(handle)
+            Ok(Some(image)) => {
+                self.artwork = Artwork::Ready { key, source, image };
+                ArtworkEffect::None
             }
             Ok(None) => self.failed(key, source, None),
             Err(error) => self.failed(key, source, Some(error)),
-        }
-    }
-
-    pub(super) fn allocated(
-        &mut self,
-        request_id: u64,
-        result: Result<image::Allocation, image::Error>,
-    ) -> ArtworkEffect {
-        let Artwork::Allocating {
-            request_id: active_request_id,
-            key,
-            source,
-            ..
-        } = &self.artwork
-        else {
-            return ArtworkEffect::None;
-        };
-        if request_id != *active_request_id {
-            return ArtworkEffect::None;
-        }
-
-        let key = key.clone();
-        let source = source.clone();
-        match result {
-            Ok(allocation) => {
-                self.artwork = Artwork::Ready {
-                    key,
-                    source,
-                    allocation,
-                };
-                ArtworkEffect::None
-            }
-            Err(error) => self.failed(key, source, Some(error.to_string())),
         }
     }
 
@@ -381,7 +332,7 @@ mod tests {
     }
 
     #[test]
-    fn same_album_siblings_reuse_in_flight_and_allocating_handle() {
+    fn same_album_siblings_reuse_in_flight_and_ready_artwork() {
         let first = album_track(1, "first", "album");
         let second = album_track(2, "second", "album");
         let third = album_track(3, "third", "album");
@@ -391,23 +342,16 @@ mod tests {
         assert!(state.select(&second).is_none());
         assert_eq!(state.current_track_id(), Some(2));
 
-        let handle = image::Handle::from_bytes(vec![1, 2, 3]);
-        let handle_id = handle.id();
+        let image = SharedString::from("data:image/png;base64,AQID");
         assert!(matches!(
-            state.loaded(request.request_id, Ok(Some(handle))),
-            ArtworkEffect::Allocate(_)
+            state.loaded(request.request_id, Ok(Some(image.clone()))),
+            ArtworkEffect::None
         ));
-        assert_eq!(
-            state.artwork_handle().map(image::Handle::id),
-            Some(handle_id)
-        );
+        assert_eq!(state.artwork_image(), Some(&image));
 
         assert!(state.select(&third).is_none());
         assert_eq!(state.current_track_id(), Some(3));
-        assert_eq!(
-            state.artwork_handle().map(image::Handle::id),
-            Some(handle_id)
-        );
+        assert_eq!(state.artwork_image(), Some(&image));
     }
 
     #[test]
@@ -420,24 +364,20 @@ mod tests {
         let second_request = state.select(&second).expect("new album must read");
         assert!(second_request.request_id > first_request.request_id);
 
-        let stale = image::Handle::from_bytes(vec![1]);
+        let stale = SharedString::from("data:image/png;base64,AQ==");
         assert!(matches!(
             state.loaded(first_request.request_id, Ok(Some(stale))),
             ArtworkEffect::None
         ));
-        assert!(state.artwork_handle().is_none());
+        assert!(state.artwork_image().is_none());
         assert_eq!(state.current_track_id(), Some(2));
 
-        let current = image::Handle::from_bytes(vec![2]);
-        let current_id = current.id();
+        let current = SharedString::from("data:image/png;base64,Ag==");
         assert!(matches!(
-            state.loaded(second_request.request_id, Ok(Some(current))),
-            ArtworkEffect::Allocate(_)
+            state.loaded(second_request.request_id, Ok(Some(current.clone()))),
+            ArtworkEffect::None
         ));
-        assert_eq!(
-            state.artwork_handle().map(image::Handle::id),
-            Some(current_id)
-        );
+        assert_eq!(state.artwork_image(), Some(&current));
     }
 
     #[test]
@@ -475,18 +415,14 @@ mod tests {
         let mut state = State::default();
 
         let request = state.select(&before).expect("first selection must read");
-        let handle = image::Handle::from_bytes(vec![1]);
-        let handle_id = handle.id();
+        let image = SharedString::from("data:image/png;base64,AQ==");
         assert!(matches!(
-            state.loaded(request.request_id, Ok(Some(handle))),
-            ArtworkEffect::Allocate(_)
+            state.loaded(request.request_id, Ok(Some(image.clone()))),
+            ArtworkEffect::None
         ));
 
         assert!(state.select(&after).is_none());
-        assert_eq!(
-            state.artwork_handle().map(image::Handle::id),
-            Some(handle_id)
-        );
+        assert_eq!(state.artwork_image(), Some(&image));
         assert_eq!(
             state.artwork.key(),
             state.current.as_ref().map(|current| &current.key)
@@ -505,9 +441,9 @@ mod tests {
         assert!(matches!(
             state.loaded(
                 request.request_id,
-                Ok(Some(image::Handle::from_bytes(vec![1])))
+                Ok(Some(SharedString::from("data:image/png;base64,AQ==")))
             ),
-            ArtworkEffect::Allocate(_)
+            ArtworkEffect::None
         ));
 
         let reread = state

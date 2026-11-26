@@ -1,0 +1,10 @@
+{
+  "name": "618 Player",
+  "id": "com.618player.app",
+  "version": "0.1.0",
+  "build": 1,
+  "appearance": "dark",
+  "theme": "theme.json",
+  "rust": ".",
+  "root": "App"
+}
