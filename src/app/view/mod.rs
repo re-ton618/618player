@@ -4,6 +4,7 @@ mod now_playing;
 mod playback;
 mod playlist_prompt;
 mod playlists;
+mod queue_list;
 mod settings;
 mod song_information;
 mod tab_strip;

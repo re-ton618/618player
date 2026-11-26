@@ -10,6 +10,7 @@ mod artwork;
 mod cache;
 mod catalog;
 mod filter;
+mod lyrics;
 mod metadata;
 mod migrations;
 #[cfg(test)]
@@ -23,6 +24,9 @@ use std::path::PathBuf;
 
 pub(crate) use artwork::load_embedded_data_uri;
 pub(crate) use catalog::Catalog;
+pub(crate) use lyrics::{Lyrics, load as load_lyrics};
+#[cfg(test)]
+pub(crate) use lyrics::parse as parse_lyrics;
 pub(crate) use filter::{SortColumn, SortDirection, matching_in_order, matching_track_indices};
 pub(crate) use service::Library;
 pub(crate) use track::{MetadataState, Track, TrackUpdate};

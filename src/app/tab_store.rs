@@ -135,8 +135,8 @@ mod tests {
     fn rejects_duplicate_and_unknown_kinds() {
         for text in [
             "618player-workspace-v1\nactive=library\ntabs=library,library",
-            "618player-workspace-v1\nactive=library\ntabs=library,queue",
-            "618player-workspace-v1\nactive=queue\ntabs=library",
+            "618player-workspace-v1\nactive=library\ntabs=library,unknown",
+            "618player-workspace-v1\nactive=unknown\ntabs=library",
         ] {
             assert!(parse(text).is_err(), "accepted {text:?}");
         }
@@ -156,11 +156,9 @@ mod tests {
     #[test]
     fn missing_file_returns_none() {
         let directory = tempdir().unwrap();
-        assert!(
-            load_from(&directory.path().join("missing"))
-                .unwrap()
-                .is_none()
-        );
+        assert!(load_from(&directory.path().join("missing"))
+            .unwrap()
+            .is_none());
     }
 
     #[test]

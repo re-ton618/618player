@@ -6,6 +6,7 @@ pub(super) enum Kind {
     RecentlyAdded,
     MostPlayed,
     NowPlaying,
+    Queue,
     SongInformation,
     Playlists,
     Settings,
@@ -13,12 +14,13 @@ pub(super) enum Kind {
 
 impl Kind {
     /// Every tab, in the order the + menu offers them.
-    pub(super) const ALL: [Self; 7] = [
+    pub(super) const ALL: [Self; 8] = [
         Self::Library,
         Self::RecentlyAdded,
         Self::MostPlayed,
         Self::Playlists,
         Self::NowPlaying,
+        Self::Queue,
         Self::SongInformation,
         Self::Settings,
     ];
@@ -29,6 +31,7 @@ impl Kind {
             Self::RecentlyAdded => "Recently Added",
             Self::MostPlayed => "Most Played",
             Self::NowPlaying => "Now Playing",
+            Self::Queue => "Queue",
             Self::SongInformation => "Song Information",
             Self::Playlists => "Playlists",
             Self::Settings => "Settings",
@@ -41,6 +44,7 @@ impl Kind {
             Self::RecentlyAdded => "recently-added",
             Self::MostPlayed => "most-played",
             Self::NowPlaying => "now-playing",
+            Self::Queue => "queue",
             Self::SongInformation => "song-information",
             Self::Playlists => "playlists",
             Self::Settings => "settings",
@@ -286,7 +290,14 @@ mod tests {
         for kind in Kind::ALL {
             // A kind left out of `ALL` stops this from compiling.
             match kind {
-                L | Kind::RecentlyAdded | Kind::MostPlayed | Kind::Playlists | N | S | G => {}
+                L
+                | Kind::RecentlyAdded
+                | Kind::MostPlayed
+                | Kind::Playlists
+                | N
+                | Kind::Queue
+                | S
+                | G => {}
             }
             assert_eq!(Kind::from_slug(kind.slug()), Some(kind));
         }

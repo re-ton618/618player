@@ -2,6 +2,7 @@ mod input;
 mod layout;
 mod listening;
 mod listing;
+mod lyrics;
 #[cfg(target_os = "android")]
 mod media_session;
 mod mobile;
@@ -84,6 +85,8 @@ pub(crate) struct Model {
     saved: Saved,
     /// The user's playlists, and what the Playlists tab shows of them.
     playlists: playlists::State,
+    /// The current track's lyrics, which the Now Playing tab shows.
+    lyrics: lyrics::State,
 }
 
 /// What tells that the session differs from the one that was saved.
@@ -115,6 +118,7 @@ impl Default for Model {
             resume_at: None,
             saved: Saved::default(),
             playlists: playlists::State::default(),
+            lyrics: lyrics::State::default(),
         };
         model.saved = model.unsaved();
         model
@@ -196,6 +200,10 @@ enum Message {
         request_id: u64,
         result: Result<Option<SharedString>, String>,
     },
+    LyricsLoaded {
+        request_id: u64,
+        result: Result<Option<crate::library::Lyrics>, String>,
+    },
     /// The window is about to close.
     Closing,
 }
@@ -206,6 +214,8 @@ enum Effect {
     LoadArtwork(playback::ArtworkRequest),
     /// Reads the artwork the Playlists tab shows.
     LoadPlaylistArtwork(playlists::ArtworkRequest),
+    /// Reads the current track's lyrics.
+    LoadLyrics(lyrics::Request),
     ScrollToTop(Listing),
     Player(audio::Command),
     /// Shows the system's folder dialog; the choice comes back as
@@ -232,6 +242,7 @@ fn update(model: &mut Model, message: Message) -> Vec<Effect> {
     effects.extend(model.record_plays());
     effects.extend(model.sync_queued());
     effects.extend(model.sync_playlist_artwork());
+    effects.extend(model.sync_lyrics());
     effects.extend(model.save_session(closing));
     effects
 }
@@ -519,6 +530,9 @@ impl Model {
             Message::PlaylistArtworkLoaded { request_id, result } => {
                 self.playlists.art_loaded(request_id, result);
             }
+            Message::LyricsLoaded { request_id, result } => {
+                self.lyrics.loaded(request_id, result);
+            }
             // The session is given out by `update`.
             Message::Closing => {}
         }
@@ -672,6 +686,12 @@ impl Model {
         self.playlists
             .show_art(first.as_deref())
             .map(Effect::LoadPlaylistArtwork)
+    }
+
+    /// Has the lyrics be of the current track.
+    fn sync_lyrics(&mut self) -> Option<Effect> {
+        let path = self.current_track().map(|track| track.path.clone());
+        self.lyrics.show(path.as_deref()).map(Effect::LoadLyrics)
     }
 
     /// What the Playlists tab's header tells of its playlist.

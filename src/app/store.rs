@@ -5,7 +5,7 @@ use nsh_core::file_dialog::OpenDialog;
 use nsh_core::prelude::*;
 use tokio::sync::mpsc::unbounded_channel;
 
-use super::{Effect, Listing, Message, Model, playback, playlists, session, update};
+use super::{Effect, Listing, Message, Model, lyrics, playback, playlists, session, update};
 use crate::audio;
 use crate::library::{self, Library};
 
@@ -122,6 +122,9 @@ impl Store {
                         result,
                     });
                 }
+                Effect::LoadLyrics(lyrics::Request { request_id, path }) => {
+                    self.load_lyrics(path, request_id);
+                }
                 Effect::ScrollToTop(listing) => {
                     self.list(listing).scroll_to_offset(px(0.0), false);
                 }
@@ -158,6 +161,17 @@ impl Store {
             .await
             .unwrap_or_else(|error| Err(error.to_string()));
             store.dispatch(done(result));
+        });
+    }
+
+    /// Reads the lyrics of the file at `path` off the UI thread.
+    fn load_lyrics(&self, path: std::path::PathBuf, request_id: u64) {
+        let store = *self;
+        spawn(async move {
+            let result = blocking(move || library::load_lyrics(&path))
+                .await
+                .unwrap_or_else(|error| Err(error.to_string()));
+            store.dispatch(Message::LyricsLoaded { request_id, result });
         });
     }
 

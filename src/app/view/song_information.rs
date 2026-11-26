@@ -309,7 +309,7 @@ fn body(details: Details, artwork: Memo<SharedString>) -> View {
         .child(sections)
 }
 
-/// The current track as the Now Playing tab shows it beside the queue: the
+/// The current track as the Now Playing tab shows it beside the lyrics: the
 /// card's artwork and name, then what is wrong and the sections under them,
 /// in a column with its right line. With nothing playing, the empty
 /// artwork over a strip that says so.
