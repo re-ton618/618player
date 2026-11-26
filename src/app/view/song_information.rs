@@ -309,13 +309,81 @@ fn body(details: Details, artwork: Memo<SharedString>) -> View {
         .child(sections)
 }
 
+/// The current track as the Now Playing tab shows it beside the queue: the
+/// card's artwork and name, then what is wrong and the sections under them,
+/// in a column with its right line. With nothing playing, the empty
+/// artwork over a strip that says so.
+pub(super) fn now_playing_panel() -> impl IntoElement {
+    let store = store();
+    let details = store.select(|model| model.current_track().map(Details::of));
+    let artwork = store.select(|model| {
+        model
+            .current_track()
+            .and(model.playback.artwork_image())
+            .cloned()
+            .unwrap_or_default()
+    });
+    let border = move || theme().border;
+
+    view()
+        .w(px(ARTWORK_SIZE + CHROME_BORDER_WIDTH))
+        .h_full()
+        .flex_shrink_0()
+        .overflow_hidden()
+        .border_r_1()
+        .border_color(border)
+        .child(dynamic(move || match details.get() {
+            Some(details) => view()
+                .flex_1()
+                .min_h(px(0.0))
+                .child(art(artwork))
+                .child(identity(&details))
+                .when_some(details.notice.clone(), |panel, said| {
+                    panel.child(warning_strip(said).border_b_1().border_color(border))
+                })
+                .child(
+                    scroll().flex_1().min_h(px(0.0)).child(
+                        view()
+                            .w_full()
+                            .selectable(true)
+                            .children(details.sections.iter().map(section)),
+                    ),
+                )
+                .into_element(),
+            None => view()
+                .flex_1()
+                .min_h(px(0.0))
+                .child(art(artwork))
+                .child(
+                    strip("Nothing is playing.")
+                        .border_b_1()
+                        .border_color(border),
+                )
+                .into_element(),
+        }))
+}
+
 /// The artwork, then under it the track's name, who made it, its album
 /// and its format: a column with its right line, each block its bottom
 /// line.
 fn card(details: &Details, artwork: Memo<SharedString>) -> View {
+    view()
+        .w(px(ARTWORK_SIZE + CHROME_BORDER_WIDTH))
+        .h_full()
+        .flex_shrink_0()
+        .overflow_hidden()
+        .border_r_1()
+        .border_color(move || theme().border)
+        .child(art(artwork))
+        .child(identity(details))
+}
+
+/// The artwork as a square across the card, its bottom line under it; a
+/// placeholder when there is none.
+fn art(artwork: Memo<SharedString>) -> View {
     let border = move || theme().border;
     let shown = computed(move || artwork.with(|uri| !uri.is_empty()));
-    let art = view()
+    view()
         .w(px(ARTWORK_SIZE))
         .h(px(ARTWORK_SIZE + CHROME_BORDER_WIDTH))
         .flex_shrink_0()
@@ -338,14 +406,19 @@ fn card(details: &Details, artwork: Memo<SharedString>) -> View {
                     .text_color(tokens::text_faint)
                     .into_element()
             }),
-        );
+        )
+}
 
+/// The track's name, who made it, its album and its format, over its
+/// bottom line.
+fn identity(details: &Details) -> View {
+    let border = move || theme().border;
     let artist = details
         .artist
         .clone()
         .unwrap_or_else(|| SharedString::from("Unknown artist"));
     let format = details.format.clone();
-    let lines = view()
+    view()
         .w_full()
         .flex_shrink_0()
         .px(px(IDENTITY_PADDING_X))
@@ -373,17 +446,7 @@ fn card(details: &Details, artwork: Memo<SharedString>) -> View {
                     .letter_spacing(AbsoluteLength::from(px(TAG_LETTER_SPACING)))
                     .text_color(move || theme().muted_foreground),
             )
-        });
-
-    view()
-        .w(px(ARTWORK_SIZE + CHROME_BORDER_WIDTH))
-        .h_full()
-        .flex_shrink_0()
-        .overflow_hidden()
-        .border_r_1()
-        .border_color(border)
-        .child(art)
-        .child(lines)
+        })
 }
 
 /// One line of text that truncates, with the whole of it in a tooltip.
@@ -533,12 +596,10 @@ mod tests {
     fn a_section_with_nothing_in_it_is_left_out() {
         let track = test_track(1, PathBuf::from("/music/01.flac"), None);
         let details = Details::of(&track);
-        assert!(
-            details
-                .sections
-                .iter()
-                .all(|section| section.title != "REPLAYGAIN")
-        );
+        assert!(details
+            .sections
+            .iter()
+            .all(|section| section.title != "REPLAYGAIN"));
         assert!(details.album.is_none());
     }
 

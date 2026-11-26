@@ -1,15 +1,15 @@
 use nsh_base::{button, theme};
 use nsh_core::prelude::*;
 
+use super::song_information::now_playing_panel;
 use crate::app::queue::Entry;
 use crate::app::store::{store, Store};
 use crate::app::Message;
 use crate::library::Track;
 use crate::theme as tokens;
-use crate::ui::{caption, chrome_button, chrome_text_button, strip, Icon, Tone};
+use crate::ui::{caption, chrome_button, strip, Icon, Tone};
 
-/// The section title: 28 and its bottom line, as the library's column
-/// titles are.
+/// The column titles: 28 and their bottom line, as the library's are.
 const HEADER_HEIGHT: f32 = 29.0;
 const HEADER_TEXT_SIZE: f32 = 10.0;
 const HEADER_LETTER_SPACING: f32 = 0.8;
@@ -60,59 +60,120 @@ impl Row {
     }
 }
 
-/// The Now Playing tab: the queue in the order it plays, the current
-/// track marked as in the library. A press on a row plays it; its cells
-/// move it up or down and remove it.
+/// The Now Playing tab: on the left what is playing, its artwork, name
+/// and details as Song Information shows them; on the right the queue in
+/// the order it plays, the current track marked as in the library. A
+/// press on a row plays it; its cells move it up or down and remove it.
 pub(super) fn now_playing() -> impl IntoElement {
     let store = store();
     let count = store.select(|model| model.queue.entries().len());
     let empty = computed(move || count.get() == 0);
     let border = move || theme().border;
 
+    let title = |said: &'static str| {
+        caption(said, HEADER_TEXT_SIZE)
+            .letter_spacing(AbsoluteLength::from(px(HEADER_LETTER_SPACING)))
+            .text_color(move || theme().muted_foreground)
+    };
+    // The titles sit over the cells they name: the row's own padding and
+    // gaps, then the order and removal cells, each with its left line.
+    let columns = view()
+        .flex_1()
+        .min_w(px(0.0))
+        .h_full()
+        .flex_row()
+        .gap(px(CELL_GAP))
+        .px(px(HORIZONTAL_PADDING))
+        .child(
+            view()
+                .h_full()
+                .flex_row()
+                .items_center()
+                .gap(px(6.0))
+                .flex_1()
+                .flex_grow(TITLE_PORTION)
+                .min_w(px(0.0))
+                .child(title("TITLE"))
+                .child(
+                    caption(
+                        move || SharedString::from(count.get().to_string()),
+                        HEADER_TEXT_SIZE,
+                    )
+                    .tabular_nums()
+                    .text_color(tokens::text_faint),
+                ),
+        )
+        .child(
+            view()
+                .h_full()
+                .justify_center()
+                .flex_1()
+                .flex_grow(ARTIST_PORTION)
+                .min_w(px(0.0))
+                .child(title("ARTIST")),
+        )
+        .child(
+            view()
+                .h_full()
+                .justify_center()
+                .items_end()
+                .w(px(TIME_WIDTH))
+                .flex_shrink_0()
+                .child(title("TIME")),
+        );
+    let order = view()
+        .w(px(ROW_HEIGHT * 2.0))
+        .h_full()
+        .flex_shrink_0()
+        .items_center()
+        .justify_center()
+        .border_l_1()
+        .border_color(border)
+        .child(title("QUEUE"));
+    let clear = chrome_button(
+        Icon::Close,
+        ACTION_ICON_SIZE,
+        "Clear queue",
+        Tone::Danger,
+        move || store.dispatch(Message::QueueClearPressed),
+    )
+    .w(px(ROW_HEIGHT))
+    .border_l_1()
+    .border_color(border);
+
     let header = view()
         .h(px(HEADER_HEIGHT))
         .flex_shrink_0()
         .flex_row()
-        .items_center()
-        .gap(px(CELL_GAP))
-        .pl(px(HORIZONTAL_PADDING))
         .bg(move || theme().card)
         .border_b_1()
         .border_color(border)
-        .child(
-            caption("QUEUE", HEADER_TEXT_SIZE)
-                .letter_spacing(AbsoluteLength::from(px(HEADER_LETTER_SPACING)))
-                .text_color(move || theme().muted_foreground),
-        )
-        .child(
-            caption(
-                move || SharedString::from(count.get().to_string()),
-                HEADER_TEXT_SIZE,
-            )
-            .tabular_nums()
-            .text_color(tokens::text_faint),
-        )
-        .child(view().flex_1())
-        .child(
-            chrome_text_button("Clear", move || store.dispatch(Message::QueueClearPressed))
-                .border_l_1()
-                .border_color(border),
-        );
+        .child(columns)
+        .child(order)
+        .child(clear);
 
     let list = virtual_list(move || count.get(), move |at| queue_row(store, at))
         .estimated_item_size(px(ROW_HEIGHT))
         .flex_1();
 
-    view()
+    let queue = view()
         .flex_1()
-        .min_h(px(0.0))
+        .min_w(px(0.0))
+        .h_full()
         .child(header)
         .child(when(empty, move || {
             strip("Nothing is queued. Press a track in the library to play it from there.")
                 .border_b_1()
                 .border_color(move || theme().border)
         }))
-        .child(list)
+        .child(list);
+
+    view()
+        .flex_1()
+        .min_h(px(0.0))
+        .flex_row()
+        .child(now_playing_panel())
+        .child(queue)
 }
 
 /// A cell of the list: it shows whichever entry it is given. The current
