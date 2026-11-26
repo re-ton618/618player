@@ -8,13 +8,21 @@ use crate::app::queue::Repeat;
 use crate::app::store::{store, Store};
 use crate::app::Message;
 use crate::theme::CHROME_BORDER_WIDTH;
-use crate::ui::{caption, chrome_button, Icon, Tone};
+use crate::ui::{caption, chrome_button, hint, Icon, Tone};
 
 /// The artwork fills the bar's height inside its border.
 const ARTWORK_SIZE: f32 = PLAYBACK_BAR_HEIGHT - 2.0 * CHROME_BORDER_WIDTH;
+/// The track's name and artist beside the artwork: as wide as the three
+/// transport cells.
+const TRACK_INFO_WIDTH: f32 = 3.0 * BAR_CELL_WIDTH;
+const TRACK_INFO_PADDING: f32 = 10.0;
+const TRACK_TITLE_TEXT_SIZE: f32 = 12.0;
+const TRACK_ARTIST_TEXT_SIZE: f32 = 11.0;
 /// The leading group, and the trailing group sized to match so the
-/// progress stays centered: artwork, its edge, three transport cells.
-const SIDE_REGION_WIDTH: f32 = ARTWORK_SIZE + CHROME_BORDER_WIDTH + 3.0 * BAR_CELL_WIDTH;
+/// progress stays centered: artwork, its edge, the track's name and
+/// artist, three transport cells.
+const SIDE_REGION_WIDTH: f32 =
+    ARTWORK_SIZE + CHROME_BORDER_WIDTH + TRACK_INFO_WIDTH + 3.0 * BAR_CELL_WIDTH;
 const PROGRESS_PADDING: f32 = 10.0;
 const PROGRESS_GAP: f32 = 10.0;
 const PROGRESS_TRACK_HEIGHT: f32 = 3.0;
@@ -26,7 +34,8 @@ const PROGRESS_THUMB_HEIGHT: f32 = 11.0;
 const PROGRESS_STEP_MS: f64 = 1_000.0;
 const TIME_TEXT_SIZE: f32 = 10.0;
 
-/// The bar under the workspace: artwork and transport on the left, the
+/// The bar under the workspace: artwork, the track's name and artist and
+/// the transport on the left, the
 /// progress in the middle, shuffle, repeat and the volume on the right.
 /// Leading cells own their right edge, trailing ones their left.
 pub(super) fn playback_bar() -> impl IntoElement {
@@ -59,6 +68,7 @@ pub(super) fn playback_bar() -> impl IntoElement {
         .flex_shrink_0()
         .flex_row()
         .child(artwork_cell())
+        .child(track_info())
         .child(transport(
             Icon::Previous,
             "Previous",
@@ -209,6 +219,71 @@ fn clock(milliseconds: u64) -> String {
     } else {
         format!("{minutes}:{seconds:02}")
     }
+}
+
+/// The current track's name over its artist, each in its half of the
+/// bar's height and cut to one line with the whole of it in a tooltip;
+/// empty with nothing playing. Its right edge is its own.
+fn track_info() -> impl IntoElement {
+    let store = store();
+    let title = store.select(|model| {
+        model
+            .current_track()
+            .map(|track| SharedString::from(track.title.clone()))
+            .unwrap_or_default()
+    });
+    let artist = store.select(|model| {
+        model
+            .current_track()
+            .map(|track| {
+                SharedString::from(
+                    track
+                        .artist
+                        .clone()
+                        .unwrap_or_else(|| "Unknown artist".to_owned()),
+                )
+            })
+            .unwrap_or_default()
+    });
+    let line = move |value: Memo<SharedString>,
+                     size: f32,
+                     weight: FontWeight,
+                     color: fn() -> AdaptiveColor| {
+        view()
+            .flex_1()
+            .w_full()
+            .min_w(px(0.0))
+            .justify_center()
+            .tooltip(hint(move || value.get()))
+            .child(
+                text(move || value.get())
+                    .text_size(px(size))
+                    .font_weight(weight)
+                    .number_of_lines(1)
+                    .text_color(color),
+            )
+    };
+    view()
+        .w(px(TRACK_INFO_WIDTH))
+        .h_full()
+        .flex_shrink_0()
+        .overflow_hidden()
+        .px(px(TRACK_INFO_PADDING))
+        .border_r_1()
+        .border_color(move || theme().border)
+        .role(AccessibilityRole::Text)
+        .child(line(
+            title,
+            TRACK_TITLE_TEXT_SIZE,
+            FontWeight::SEMIBOLD,
+            || theme().foreground,
+        ))
+        .child(line(
+            artist,
+            TRACK_ARTIST_TEXT_SIZE,
+            FontWeight::NORMAL,
+            || theme().muted_foreground,
+        ))
 }
 
 /// The current track's artwork, or an empty square, with its right edge.
