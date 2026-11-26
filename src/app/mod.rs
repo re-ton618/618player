@@ -2,6 +2,7 @@ mod input;
 mod playback;
 mod queue;
 mod session;
+mod settings_tab;
 mod store;
 mod tab_store;
 mod tabs;
@@ -47,6 +48,8 @@ pub(crate) struct Model {
     sort_column: SortColumn,
     sort_direction: SortDirection,
     tabs: tabs::State,
+    /// The category the Settings tab shows.
+    settings_category: settings_tab::Category,
     playback: playback::State,
     /// The tracks that play one after another, and which of them is
     /// current.
@@ -81,6 +84,7 @@ impl Default for Model {
             sort_column: SortColumn::Title,
             sort_direction: SortDirection::Ascending,
             tabs: tabs::State::default(),
+            settings_category: settings_tab::Category::default(),
             playback: playback::State::default(),
             queue: queue::State::default(),
             playback_failures: 0,
@@ -114,8 +118,12 @@ enum Message {
     },
     QueueClearPressed,
     ShufflePressed,
+    /// Shuffle was chosen on or off (the Settings tab).
+    ShuffleChosen(bool),
     /// Repeat goes on to its next mode: off, all, one.
     RepeatPressed,
+    /// A repeat mode was chosen (the Settings tab).
+    RepeatChosen(queue::Repeat),
     ArtworkLoaded {
         request_id: u64,
         result: Result<Option<SharedString>, String>,
@@ -134,6 +142,8 @@ enum Message {
     RemoveFolderPressed(i64),
     VolumeChanged(u8),
     Tabs(tabs::Message),
+    /// The Settings tab is to show this category.
+    SettingsCategoryPressed(settings_tab::Category),
     /// The window is about to close.
     Closing,
 }
@@ -266,7 +276,13 @@ impl Model {
                 }
             }
             Message::ShufflePressed => self.queue.set_shuffle(!self.queue.shuffled()),
+            Message::ShuffleChosen(on) => {
+                if on != self.queue.shuffled() {
+                    self.queue.set_shuffle(on);
+                }
+            }
             Message::RepeatPressed => self.queue.set_repeat(self.queue.repeat().next()),
+            Message::RepeatChosen(mode) => self.queue.set_repeat(mode),
             Message::ArtworkLoaded { request_id, result } => {
                 return match self.playback.loaded(request_id, result) {
                     playback::ArtworkEffect::None => Vec::new(),
@@ -385,6 +401,7 @@ impl Model {
                     eprintln!("Workspace save failed: {error}");
                 }
             }
+            Message::SettingsCategoryPressed(category) => self.settings_category = category,
             // The session is given out by `update`.
             Message::Closing => {}
         }
@@ -1816,5 +1833,28 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn the_settings_tab_chooses_shuffle_repeat_and_its_category() {
+        let mut app = app_with_tracks(10);
+        let _ = update(&mut app, Message::TrackPressed(1));
+        let _ = update(&mut app, Message::ShuffleChosen(true));
+        assert!(app.queue.shuffled());
+        // Chosen again it stays on: a choice, not a toggle.
+        let _ = update(&mut app, Message::ShuffleChosen(true));
+        assert!(app.queue.shuffled());
+        let _ = update(&mut app, Message::ShuffleChosen(false));
+        assert!(!app.queue.shuffled());
+
+        let _ = update(&mut app, Message::RepeatChosen(queue::Repeat::One));
+        assert_eq!(app.queue.repeat(), queue::Repeat::One);
+
+        assert_eq!(app.settings_category, settings_tab::Category::Library);
+        let _ = update(
+            &mut app,
+            Message::SettingsCategoryPressed(settings_tab::Category::Playback),
+        );
+        assert_eq!(app.settings_category, settings_tab::Category::Playback);
     }
 }

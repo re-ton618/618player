@@ -7,12 +7,14 @@
 
 mod icons;
 mod menus;
+mod rows;
 
-use nsh_base::{button, theme, ButtonElement};
+use nsh_base::{theme, ButtonElement};
 use nsh_core::prelude::*;
 
 pub(crate) use icons::Icon;
 pub(crate) use menus::{bar_menu, menu_row, subject_menu};
+pub(crate) use rows::{button, choice, label_column_row, section_title, ROW_HEIGHT};
 
 use crate::theme as tokens;
 
@@ -76,7 +78,7 @@ pub(crate) fn chrome_button(
     tone: Tone,
     on_press: impl Fn() + 'static,
 ) -> ButtonElement {
-    chrome_states!(button())
+    chrome_states!(nsh_base::button())
         .accessibility_label(label)
         .on_press(on_press)
         .child(glyph(icon, icon_size, tone))
@@ -96,7 +98,7 @@ pub(crate) fn chrome_text_button(
     label: &'static str,
     on_press: impl Fn() + 'static,
 ) -> ButtonElement {
-    chrome_states!(button())
+    chrome_states!(nsh_base::button())
         .px(px(LABEL_CELL_PADDING))
         .accessibility_label(label)
         .on_press(on_press)
@@ -146,7 +148,7 @@ pub(crate) fn caption(value: impl IntoReactive<SharedString>, size: f32) -> Text
 
 /// A plain message strip: a full-width block that says one thing, in
 /// muted 11pt text. The caller gives it the stack's line.
-pub(crate) fn strip(said: &'static str) -> View {
+pub(crate) fn strip(said: impl IntoReactive<SharedString>) -> View {
     view()
         .w_full()
         .flex_shrink_0()
