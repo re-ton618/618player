@@ -1,6 +1,7 @@
 //! 618 Player: `nsh.json`'s `"root"` names [`App`].
 
 mod app;
+mod audio;
 mod library;
 mod settings;
 mod theme;

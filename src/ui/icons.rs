@@ -12,9 +12,11 @@ pub(crate) enum Icon {
     Add,
     Previous,
     Play,
+    Pause,
     Next,
     SortAscending,
     SortDescending,
+    Search,
 }
 
 impl Icon {
@@ -29,9 +31,11 @@ impl Icon {
             Self::Add => r#"<path d="M12 5v14M5 12h14"/>"#,
             Self::Previous => r#"<path d="M19 20 9 12l10-8z"/><path d="M5 19V5"/>"#,
             Self::Play => r#"<path d="M6 3l14 9-14 9z"/>"#,
+            Self::Pause => r#"<path d="M8 4v16M16 4v16"/>"#,
             Self::Next => r#"<path d="M5 4l10 8-10 8z"/><path d="M19 5v14"/>"#,
             Self::SortAscending => r#"<path d="m18 15-6-6-6 6"/>"#,
             Self::SortDescending => r#"<path d="m6 9 6 6 6-6"/>"#,
+            Self::Search => r#"<circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>"#,
         }
     }
 

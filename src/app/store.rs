@@ -4,23 +4,36 @@
 use std::sync::mpsc;
 
 use nsh_core::prelude::*;
+use tokio::sync::mpsc::unbounded_channel;
 
 use super::{Effect, Message, Model, playback, update};
+use crate::audio;
 use crate::library::{self, LibraryEvent};
 
 #[derive(Clone, Copy)]
 pub(crate) struct Store {
     model: Signal<Model>,
     library_list: ElementRef,
+    player: Stored<audio::Player>,
 }
 
 impl Store {
-    /// Made once, by the root: restores the workspace and starts indexing.
+    /// Made once, by the root: restores the workspace, starts the player
+    /// and starts indexing.
     pub(crate) fn new() -> Self {
+        let (events, mut reports) = unbounded_channel();
         let store = Self {
             model: signal_with(Model::restored(), SignalEquals::Never),
             library_list: element_ref(),
+            player: stored(audio::Player::spawn(move |event| {
+                events.send(event).is_ok()
+            })),
         };
+        spawn(async move {
+            while let Some(event) = reports.recv().await {
+                store.dispatch(Message::Player(event));
+            }
+        });
         store.index_library();
         super::input::bind(move |message| store.dispatch(Message::Tabs(message)));
         store
@@ -42,12 +55,14 @@ impl Store {
     }
 
     pub(super) fn dispatch(&self, message: Message) {
-        let mut effect = Effect::None;
-        self.model.update(|model| effect = update(model, message));
-        match effect {
-            Effect::None => {}
-            Effect::LoadArtwork(request) => self.load_artwork(request),
-            Effect::ScrollLibraryToTop => self.library_list.scroll_to_offset(px(0.0), false),
+        let mut effects = Vec::new();
+        self.model.update(|model| effects = update(model, message));
+        for effect in effects {
+            match effect {
+                Effect::LoadArtwork(request) => self.load_artwork(request),
+                Effect::ScrollLibraryToTop => self.library_list.scroll_to_offset(px(0.0), false),
+                Effect::Player(command) => self.player.with(|player| player.send(command)),
+            }
         }
     }
 

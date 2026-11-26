@@ -4,18 +4,23 @@ use nsh_core::prelude::*;
 use crate::app::Message;
 use crate::app::store::{Store, store};
 use crate::library::{SortColumn, SortDirection, Track};
-use crate::theme as tokens;
-use crate::ui::{Icon, Rule, caption, horizontal_rule};
+use crate::ui::{Icon, caption};
 
+/// A track row, its bottom line included.
 const ROW_HEIGHT: f32 = 32.0;
-const HEADER_HEIGHT: f32 = ROW_HEIGHT - 1.0;
+/// The column titles: 28 and their bottom line.
+const HEADER_HEIGHT: f32 = 29.0;
+const HEADER_TEXT_SIZE: f32 = 10.0;
+const HEADER_LETTER_SPACING: f32 = 0.8;
+const SORT_ICON_SIZE: f32 = 8.0;
+const CELL_TEXT_SIZE: f32 = 12.0;
 const TITLE_PORTION: f32 = 5.0;
 const ARTIST_PORTION: f32 = 3.0;
 const ALBUM_PORTION: f32 = 4.0;
 const YEAR_WIDTH: f32 = 58.0;
 const TIME_WIDTH: f32 = 58.0;
 const CELL_GAP: f32 = 12.0;
-const HORIZONTAL_PADDING: f32 = 14.0;
+const HORIZONTAL_PADDING: f32 = 10.0;
 
 /// A column's width: a share of the free space, or fixed and right-aligned.
 #[derive(Clone, Copy)]
@@ -66,13 +71,12 @@ impl Row {
     }
 }
 
-/// The sortable header over the virtualized list of the visible tracks.
+/// The column titles over the virtualized list of the visible tracks.
 pub(super) fn library() -> impl IntoElement {
     let store = store();
     let count = store.select(|model| model.visible_tracks.len());
     let list = virtual_list(move || count.get(), move |at| track_row(store, at))
         .estimated_item_size(px(ROW_HEIGHT))
-        .separator(|| horizontal_rule(Rule::Divider))
         .flex_1()
         .element_ref(&store.library_list());
 
@@ -80,10 +84,11 @@ pub(super) fn library() -> impl IntoElement {
         .flex_1()
         .min_h(px(0.0))
         .child(header(store))
-        .child(horizontal_rule(Rule::Divider))
         .child(list)
 }
 
+/// The sortable column titles: `card`, 10pt semibold and spaced, with
+/// their bottom line.
 fn header(store: Store) -> impl IntoElement {
     let sort = store.select(|model| (model.sort_column, model.sort_direction));
     let column = move |(label, column, width): (&'static str, SortColumn, Width)| {
@@ -91,7 +96,7 @@ fn header(store: Store) -> impl IntoElement {
             when(
                 move || sort.get() == (column, direction),
                 move || {
-                    icon.view(10.0)
+                    icon.view(SORT_ICON_SIZE)
                         .text_color(move || theme().muted_foreground)
                         .group_hover(|s| s.text_color(move || theme().foreground))
                 },
@@ -102,7 +107,8 @@ fn header(store: Store) -> impl IntoElement {
             .items_center()
             .gap(px(4.0))
             .child(
-                caption(label, 12.0)
+                caption(label, HEADER_TEXT_SIZE)
+                    .letter_spacing(AbsoluteLength::from(px(HEADER_LETTER_SPACING)))
                     .text_color(move || theme().muted_foreground)
                     .group_hover(|s| s.text_color(move || theme().foreground)),
             )
@@ -128,12 +134,21 @@ fn header(store: Store) -> impl IntoElement {
         .flex_row()
         .gap(px(CELL_GAP))
         .px(px(HORIZONTAL_PADDING))
+        .bg(move || theme().card)
+        .border_b_1()
+        .border_color(move || theme().border)
         .children(COLUMNS.map(column))
 }
 
-/// A cell of the list: it shows whichever row it is given.
+/// A cell of the list: it shows whichever row it is given. A line with
+/// its bottom edge; the current track is `card` with accent text.
 fn track_row(store: Store, at: Position) -> impl IntoElement {
     let row = store.select(move |model| model.visible_track(at.index()).map(Row::of));
+    let current_id = store.select(|model| model.current_track().map(|track| track.id));
+    let current = move || {
+        let id = row.with(|row| row.as_ref().map(|row| row.id));
+        id.is_some() && id == current_id.get()
+    };
     let cell = move |index: usize, width: Width| {
         width.apply(
             view().h_full().justify_center().child(
@@ -144,10 +159,13 @@ fn track_row(store: Store, at: Position) -> impl IntoElement {
                             .unwrap_or_default()
                     })
                 })
-                .text_size(px(14.0))
+                .text_size(px(CELL_TEXT_SIZE))
                 .number_of_lines(1)
+                .tabular_nums()
                 .text_color(move || {
-                    if index == 0 {
+                    if current() {
+                        theme().primary
+                    } else if index == 0 {
                         theme().foreground
                     } else {
                         theme().muted_foreground
@@ -158,12 +176,16 @@ fn track_row(store: Store, at: Position) -> impl IntoElement {
     };
 
     button()
-        .h(px(ROW_HEIGHT - 1.0))
+        .h(px(ROW_HEIGHT))
         .flex_row()
         .gap(px(CELL_GAP))
         .px(px(HORIZONTAL_PADDING))
-        .hover(|s| s.bg(tokens::row_hover))
-        .active(|s| s.bg(tokens::row_hover))
+        .border_b_1()
+        .border_color(move || theme().border)
+        .transition_colors()
+        .style_when(current, |s| s.bg(move || theme().card))
+        .hover(|s| s.bg(move || theme().card))
+        .active(|s| s.bg(move || theme().border))
         .on_press(move || {
             if let Some(id) = row.with_untracked(|row| row.as_ref().map(|row| row.id)) {
                 store.dispatch(Message::TrackPressed(id));

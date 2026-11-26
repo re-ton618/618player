@@ -5,7 +5,9 @@ use std::time::UNIX_EPOCH;
 
 use walkdir::WalkDir;
 
-const SUPPORTED_EXTENSIONS: &[&str] = &["aac", "flac", "m4a", "mp3", "ogg", "opus", "wav", "wma"];
+const SUPPORTED_EXTENSIONS: &[&str] = &[
+    "aac", "aif", "aiff", "flac", "m4a", "mp3", "ogg", "opus", "wav", "wma",
+];
 
 #[derive(Debug, Clone)]
 pub(super) struct DiscoveredTrack {

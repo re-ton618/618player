@@ -6,7 +6,7 @@
       "foreground": "#efede7",
       "card": "#17191c",
       "card-foreground": "#efede7",
-      "popover": "#17191c",
+      "popover": "#131518",
       "popover-foreground": "#efede7",
       "primary": "#d3eb6f",
       "primary-foreground": "#0d0e10",
@@ -17,12 +17,12 @@
       "accent": "#222529",
       "accent-foreground": "#efede7",
       "destructive": "#d2464c",
-      "destructive-foreground": "#ffffff",
       "border": "#303338",
       "input": "#303338",
       "ring": "#d3eb6f",
-      "divider": "#222529",
-      "row-hover": "#1d2024"
+      "text-faint": "#62666d",
+      "warning": "#e0b341",
+      "success": "#5fbf73"
     }
   }
 }
