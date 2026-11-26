@@ -10,6 +10,9 @@ pub(crate) enum SortColumn {
     Album,
     Year,
     Duration,
+    /// When the file was last changed: when it came into the library, for
+    /// as long as it was not written to since.
+    Added,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,6 +87,7 @@ fn compare_tracks(
         .then_with(|| compare_in_album(left, right)),
         SortColumn::Year => compare_optional(left.year, right.year, direction),
         SortColumn::Duration => compare_optional(left.duration_ms, right.duration_ms, direction),
+        SortColumn::Added => direction.apply(left.modified_ns.cmp(&right.modified_ns)),
     }
 }
 

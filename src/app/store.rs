@@ -5,14 +5,15 @@ use nsh_core::file_dialog::OpenDialog;
 use nsh_core::prelude::*;
 use tokio::sync::mpsc::unbounded_channel;
 
-use super::{Effect, Message, Model, playback, session, update};
+use super::{Effect, Listing, Message, Model, playback, session, update};
 use crate::audio;
 use crate::library::{self, Library};
 
 #[derive(Clone, Copy)]
 pub(crate) struct Store {
     model: Signal<Model>,
-    library_list: ElementRef,
+    /// Each listing's list, which an update may scroll.
+    lists: [ElementRef; Listing::COUNT],
     player: Stored<audio::Player>,
     library: Stored<Library>,
     session: Stored<session::Writer>,
@@ -32,7 +33,7 @@ impl Store {
         player.send(audio::Command::Volume(model.playback.volume()));
         let store = Self {
             model: signal_with(model, SignalEquals::Never),
-            library_list: element_ref(),
+            lists: Listing::ALL.map(|_| element_ref()),
             player: stored(player),
             library: stored(Library::spawn(move |event| {
                 library_events.send(event).is_ok()
@@ -53,9 +54,9 @@ impl Store {
         store
     }
 
-    /// The handle of the library's list, which an update may scroll.
-    pub(super) fn library_list(&self) -> ElementRef {
-        self.library_list
+    /// The handle of `listing`'s list, which an update may scroll.
+    pub(super) fn list(&self, listing: Listing) -> ElementRef {
+        self.lists[listing.index()]
     }
 
     /// A derived value of the model; its readers run again only when it
@@ -79,7 +80,9 @@ impl Store {
         for effect in effects {
             match effect {
                 Effect::LoadArtwork(request) => self.load_artwork(request),
-                Effect::ScrollLibraryToTop => self.library_list.scroll_to_offset(px(0.0), false),
+                Effect::ScrollToTop(listing) => {
+                    self.list(listing).scroll_to_offset(px(0.0), false);
+                }
                 Effect::Player(command) => self.player.with(|player| player.send(command)),
                 Effect::PickFolder => self.pick_folder(),
                 Effect::Library(command) => self.library.with(|library| library.send(command)),

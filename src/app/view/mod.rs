@@ -1,11 +1,12 @@
 mod add_tab_menu;
-mod library;
+mod format;
 mod now_playing;
 mod playback;
 mod settings;
 mod song_information;
 mod tab_strip;
 mod top_bar;
+mod track_list;
 mod volume_control;
 mod window_frame;
 mod workspace;

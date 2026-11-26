@@ -1,4 +1,5 @@
 mod input;
+mod listing;
 mod playback;
 mod queue;
 mod session;
@@ -18,6 +19,7 @@ use crate::library::{
     Catalog, Folder, LibraryCommand, LibraryEvent, SortColumn, SortDirection, Track,
 };
 
+use listing::Listing;
 pub(crate) use store::Store;
 pub(crate) use view::root;
 
@@ -38,8 +40,9 @@ pub(crate) struct Model {
     /// them (the queue) can still tell what they were.
     tracks: Vec<Track>,
     track_positions: HashMap<i64, usize>,
-    /// The present tracks, searched and sorted.
-    visible_tracks: Vec<usize>,
+    /// Where in `tracks` each listing's rows are: the present tracks,
+    /// searched, in its order.
+    listed: [Vec<usize>; Listing::COUNT],
     /// The folders the library is made of.
     folders: Vec<Folder>,
     /// The albums and album artists of the present tracks.
@@ -79,7 +82,7 @@ impl Default for Model {
         let mut model = Self {
             tracks: Vec::new(),
             track_positions: HashMap::new(),
-            visible_tracks: Vec::new(),
+            listed: Default::default(),
             folders: Vec::new(),
             catalog: Catalog::default(),
             search_query: String::new(),
@@ -104,9 +107,9 @@ enum Message {
     LibraryEvent(LibraryEvent),
     SearchChanged(String),
     SortChanged(SortColumn),
-    /// A row of the library was pressed: its track plays, with the list
-    /// as it is shown as the queue.
-    TrackPressed(i64),
+    /// A row of a listing was pressed: its track plays, with the list as
+    /// it is shown as the queue.
+    TrackPressed(Listing, i64),
     /// The track is to play right after the current one.
     PlayNextPressed(i64),
     /// The track is to play after everything queued.
@@ -157,7 +160,7 @@ enum Message {
 #[derive(Debug, PartialEq, Eq)]
 enum Effect {
     LoadArtwork(playback::ArtworkRequest),
-    ScrollLibraryToTop,
+    ScrollToTop(Listing),
     Player(audio::Command),
     /// Shows the system's folder dialog; the choice comes back as
     /// [`Message::FolderPicked`].
@@ -218,7 +221,7 @@ impl Model {
                 }
                 self.search_query = query;
                 self.rebuild_projection();
-                return vec![Effect::ScrollLibraryToTop];
+                return Listing::ALL.map(Effect::ScrollToTop).into();
             }
             Message::SortChanged(column) => {
                 if self.sort_column == column {
@@ -228,24 +231,11 @@ impl Model {
                     self.sort_direction = SortDirection::Ascending;
                 }
                 self.rebuild_projection();
-                return vec![Effect::ScrollLibraryToTop];
+                return vec![Effect::ScrollToTop(Listing::Library)];
             }
-            Message::TrackPressed(track_id) => {
-                if self.playable(track_id).is_none() {
-                    return Vec::new();
-                }
-                let mut listed = self.listed_tracks();
-                let start = listed
-                    .iter()
-                    .position(|&id| id == track_id)
-                    .unwrap_or_else(|| {
-                        // Pressed as the list changed under it.
-                        listed.insert(0, track_id);
-                        0
-                    });
-                self.playback_failures = 0;
-                self.queue.replace(listed, start);
-                return self.play_current();
+            Message::TrackPressed(listing, track_id) => {
+                let listed = self.listed_tracks(listing);
+                return self.play_listed(listed, track_id);
             }
             Message::PlayNextPressed(track_id) => {
                 if self.track_positions.contains_key(&track_id) {
@@ -315,7 +305,7 @@ impl Model {
                 // where it is, else the list from its top.
                 self.playback_failures = 0;
                 if self.queue.is_empty() {
-                    self.queue.replace(self.listed_tracks(), 0);
+                    self.queue.replace(self.listed_tracks(Listing::Library), 0);
                 }
                 return self.play_from_current();
             }
@@ -677,13 +667,30 @@ impl Model {
         std::iter::once(stop).chain(self.show_current()).collect()
     }
 
-    /// The ids of the library's tracks as they are listed now, searched
-    /// and sorted.
-    fn listed_tracks(&self) -> Vec<i64> {
-        self.visible_tracks
+    /// The ids of the tracks of `listing`, as it is shown now.
+    fn listed_tracks(&self, listing: Listing) -> Vec<i64> {
+        self.rows(listing)
             .iter()
             .map(|&position| self.tracks[position].id)
             .collect()
+    }
+
+    /// The track of `track_id` plays, with `listed` as the queue.
+    fn play_listed(&mut self, mut listed: Vec<i64>, track_id: i64) -> Vec<Effect> {
+        if self.playable(track_id).is_none() {
+            return Vec::new();
+        }
+        let start = listed
+            .iter()
+            .position(|&id| id == track_id)
+            .unwrap_or_else(|| {
+                // Pressed as the list changed under it.
+                listed.insert(0, track_id);
+                0
+            });
+        self.playback_failures = 0;
+        self.queue.replace(listed, start);
+        self.play_current()
     }
 
     /// Where the queue's current track is in `tracks`, when its file is
@@ -699,11 +706,24 @@ impl Model {
             .map(|position| &self.tracks[position])
     }
 
-    /// The track shown in row `row` of the library, as searched and sorted.
-    fn visible_track(&self, row: usize) -> Option<&Track> {
-        self.visible_tracks
+    /// Where in `tracks` the rows of `listing` are.
+    fn rows(&self, listing: Listing) -> &[usize] {
+        &self.listed[listing.index()]
+    }
+
+    /// The track shown in row `row` of `listing`.
+    fn listed_track(&self, listing: Listing, row: usize) -> Option<&Track> {
+        self.rows(listing)
             .get(row)
             .map(|&position| &self.tracks[position])
+    }
+
+    /// The order `listing` is in: the library's is the user's choice.
+    fn sort_of(&self, listing: Listing) -> (SortColumn, SortDirection) {
+        match listing {
+            Listing::Library => (self.sort_column, self.sort_direction),
+            Listing::RecentlyAdded => (SortColumn::Added, SortDirection::Descending),
+        }
     }
 
     /// The entry at place `index` of the queue and its track, when the
@@ -718,12 +738,15 @@ impl Model {
     }
 
     fn rebuild_projection(&mut self) {
-        self.visible_tracks = crate::library::matching_track_indices(
-            &self.tracks,
-            &self.search_query,
-            self.sort_column,
-            self.sort_direction,
-        );
+        self.listed = Listing::ALL.map(|listing| {
+            let (column, direction) = self.sort_of(listing);
+            crate::library::matching_track_indices(
+                &self.tracks,
+                &self.search_query,
+                column,
+                direction,
+            )
+        });
     }
 }
 
@@ -829,10 +852,10 @@ mod tests {
     #[test]
     fn unknown_track_press_preserves_current_track() {
         let mut app = app_with_tracks(1);
-        let _ = update(&mut app, Message::TrackPressed(1));
+        let _ = update(&mut app, Message::TrackPressed(Listing::Library, 1));
         assert_eq!(current_id(&app), Some(1));
 
-        assert!(update(&mut app, Message::TrackPressed(999)).is_empty());
+        assert!(update(&mut app, Message::TrackPressed(Listing::Library, 999)).is_empty());
 
         assert_eq!(current_id(&app), Some(1));
     }
@@ -843,7 +866,7 @@ mod tests {
     #[test]
     fn a_playing_track_that_goes_absent_is_left_for_the_next_or_stops() {
         let mut app = app_with_three_tracks();
-        let _ = update(&mut app, Message::TrackPressed(2));
+        let _ = update(&mut app, Message::TrackPressed(Listing::Library, 2));
 
         let gone = absent(&app, 2);
         let effects = update(&mut app, gone);
@@ -873,14 +896,36 @@ mod tests {
         );
 
         assert!(effects.is_empty());
-        let listed: Vec<i64> = (0..app.visible_tracks.len())
-            .filter_map(|row| app.visible_track(row).map(|track| track.id))
+        let listed: Vec<i64> = (0..app.rows(Listing::Library).len())
+            .filter_map(|row| {
+                app.listed_track(Listing::Library, row)
+                    .map(|track| track.id)
+            })
             .collect();
         assert_eq!(listed, [2, 3, 4]);
         // The absent track is kept for what names it, and cannot be played.
         assert_eq!(app.tracks.len(), 4);
         assert_eq!(app.catalog.track_count(), 3);
-        assert!(update(&mut app, Message::TrackPressed(1)).is_empty());
+        assert!(update(&mut app, Message::TrackPressed(Listing::Library, 1)).is_empty());
+    }
+
+    #[test]
+    fn recently_added_lists_the_last_added_first_and_queues_that_list() {
+        let mut app = app_with_three_tracks();
+        for (track, modified_ns) in app.tracks.iter_mut().zip([20, 10, 30]) {
+            track.modified_ns = modified_ns;
+        }
+        app.rebuild_projection();
+
+        let recent = Listing::RecentlyAdded;
+        let listed: Vec<i64> = (0..app.rows(recent).len())
+            .filter_map(|row| app.listed_track(recent, row).map(|track| track.id))
+            .collect();
+        assert_eq!(listed, [3, 1, 2]);
+
+        let _ = update(&mut app, Message::TrackPressed(recent, 1));
+        assert_eq!(queued_ids(&app), [3, 1, 2]);
+        assert_eq!(current_id(&app), Some(1));
     }
 
     #[test]
@@ -932,7 +977,7 @@ mod tests {
             &mut app,
             loaded,
         );
-        assert_eq!(app.visible_tracks.len(), 50_000);
+        assert_eq!(app.rows(Listing::Library).len(), 50_000);
         for (what, query) in [
             ("a letter", "a"),
             ("a word", "album 31"),
@@ -967,7 +1012,7 @@ mod tests {
         timed(
             "a row is pressed (a queue of 50,000, and its session)",
             &mut app,
-            Message::TrackPressed(tracks[25_000].id),
+            Message::TrackPressed(Listing::Library, tracks[25_000].id),
         );
         timed("next", &mut app, Message::NextPressed);
         timed("shuffle on", &mut app, Message::ShufflePressed);
@@ -990,7 +1035,7 @@ mod tests {
     fn a_pressed_track_plays_and_reads_its_artwork() {
         let mut app = app_with_three_tracks();
 
-        let effects = update(&mut app, Message::TrackPressed(2));
+        let effects = update(&mut app, Message::TrackPressed(Listing::Library, 2));
 
         assert!(matches!(effects[0], Effect::LoadArtwork(_)));
         assert_eq!(loaded(&effects).1, PathBuf::from("/music/album/b.flac"));
@@ -1014,7 +1059,7 @@ mod tests {
     #[test]
     fn next_and_previous_walk_the_queue_as_it_was_listed() {
         let mut app = app_with_three_tracks();
-        let _ = update(&mut app, Message::TrackPressed(2));
+        let _ = update(&mut app, Message::TrackPressed(Listing::Library, 2));
         // A search after the press does not change what comes next.
         let _ = update(&mut app, Message::SearchChanged("a".to_owned()));
 
@@ -1030,7 +1075,7 @@ mod tests {
     #[test]
     fn previous_restarts_a_track_that_is_under_way_or_first() {
         let mut app = app_with_three_tracks();
-        let effects = update(&mut app, Message::TrackPressed(2));
+        let effects = update(&mut app, Message::TrackPressed(Listing::Library, 2));
         let (ticket, _) = loaded(&effects);
         let position = audio::Event::Position {
             ticket,
@@ -1058,7 +1103,7 @@ mod tests {
     #[test]
     fn a_finished_track_goes_on_to_the_next_and_the_last_one_stops() {
         let mut app = app_with_three_tracks();
-        let effects = update(&mut app, Message::TrackPressed(2));
+        let effects = update(&mut app, Message::TrackPressed(Listing::Library, 2));
         let (ticket, _) = loaded(&effects);
 
         let effects = update(&mut app, Message::Player(audio::Event::Finished { ticket }));
@@ -1086,7 +1131,7 @@ mod tests {
     #[test]
     fn a_started_track_has_the_next_queued_and_follows_the_player_to_it() {
         let mut app = app_with_three_tracks();
-        let effects = update(&mut app, Message::TrackPressed(1));
+        let effects = update(&mut app, Message::TrackPressed(Listing::Library, 1));
         let (ticket, path) = queued(&effects).expect("the next track is queued");
         assert_eq!(path, PathBuf::from("/music/album/b.flac"));
 
@@ -1122,7 +1167,7 @@ mod tests {
     #[test]
     fn an_unplayable_track_is_skipped() {
         let mut app = app_with_three_tracks();
-        let effects = update(&mut app, Message::TrackPressed(1));
+        let effects = update(&mut app, Message::TrackPressed(Listing::Library, 1));
         let (ticket, _) = loaded(&effects);
         let failed = audio::Event::Failed {
             ticket,
@@ -1138,7 +1183,7 @@ mod tests {
     fn five_tracks_failing_in_a_row_give_up_even_when_all_repeat() {
         let mut app = app_with_three_tracks();
         let _ = update(&mut app, Message::RepeatPressed);
-        let mut effects = update(&mut app, Message::TrackPressed(1));
+        let mut effects = update(&mut app, Message::TrackPressed(Listing::Library, 1));
 
         for attempt in 1..=MAX_PLAYBACK_FAILURES {
             let failed = audio::Event::Failed {
@@ -1171,7 +1216,7 @@ mod tests {
             [_, Effect::SaveSession(session::Session { volume: 40, .. })]
         ));
 
-        let _ = update(&mut app, Message::TrackPressed(1));
+        let _ = update(&mut app, Message::TrackPressed(Listing::Library, 1));
         let effects = update(&mut app, Message::PositionChanged(1_000));
         assert!(matches!(
             effects[..],
@@ -1184,7 +1229,7 @@ mod tests {
     #[test]
     fn play_next_and_add_to_end_queue_behind_the_current_track_and_the_last() {
         let mut app = app_with_tracks(5);
-        let _ = update(&mut app, Message::TrackPressed(2));
+        let _ = update(&mut app, Message::TrackPressed(Listing::Library, 2));
 
         // Behind the current track: it is what the player has next now.
         let effects = update(&mut app, Message::PlayNextPressed(5));
@@ -1211,7 +1256,7 @@ mod tests {
     #[test]
     fn a_pressed_queue_entry_plays_and_the_queue_stays_as_it_is() {
         let mut app = app_with_tracks(4);
-        let _ = update(&mut app, Message::TrackPressed(1));
+        let _ = update(&mut app, Message::TrackPressed(Listing::Library, 1));
 
         let effects = press_entry(&mut app, 3);
 
@@ -1224,7 +1269,7 @@ mod tests {
     #[test]
     fn removing_and_moving_entries_keeps_what_plays_and_updates_what_is_next() {
         let mut app = app_with_tracks(4);
-        let _ = update(&mut app, Message::TrackPressed(2));
+        let _ = update(&mut app, Message::TrackPressed(Listing::Library, 2));
 
         // The one that was next: the one behind it is now.
         let effects = remove_entry(&mut app, 3);
@@ -1258,7 +1303,7 @@ mod tests {
     #[test]
     fn removing_the_paused_track_leaves_the_next_one_waiting() {
         let mut app = app_with_tracks(3);
-        let _ = update(&mut app, Message::TrackPressed(1));
+        let _ = update(&mut app, Message::TrackPressed(Listing::Library, 1));
         let _ = update(&mut app, Message::PlayPausePressed);
 
         let effects = remove_entry(&mut app, 1);
@@ -1273,7 +1318,7 @@ mod tests {
     #[test]
     fn clearing_keeps_the_loaded_track_and_empties_a_stopped_queue() {
         let mut app = app_with_tracks(3);
-        let _ = update(&mut app, Message::TrackPressed(2));
+        let _ = update(&mut app, Message::TrackPressed(Listing::Library, 2));
 
         let effects = update(&mut app, Message::QueueClearPressed);
         assert_eq!(commands(&effects), [&audio::Command::Unqueue]);
@@ -1296,7 +1341,7 @@ mod tests {
     #[test]
     fn shuffle_keeps_the_playing_track_and_returns_to_the_order_at_it() {
         let mut app = app_with_tracks(40);
-        let effects = update(&mut app, Message::TrackPressed(5));
+        let effects = update(&mut app, Message::TrackPressed(Listing::Library, 5));
         assert_eq!(queued(&effects).unwrap().1, track_path(6));
 
         // On: nothing is loaded again, and the next is another track.
@@ -1341,7 +1386,7 @@ mod tests {
     #[test]
     fn repeat_all_wraps_gaplessly_and_for_next_and_previous() {
         let mut app = app_with_three_tracks();
-        let _ = update(&mut app, Message::TrackPressed(3));
+        let _ = update(&mut app, Message::TrackPressed(Listing::Library, 3));
 
         // All: the first track is queued behind the last.
         let effects = update(&mut app, Message::RepeatPressed);
@@ -1365,7 +1410,7 @@ mod tests {
     #[test]
     fn repeat_one_queues_the_track_behind_itself_until_the_user_moves_on() {
         let mut app = app_with_three_tracks();
-        let _ = update(&mut app, Message::TrackPressed(2));
+        let _ = update(&mut app, Message::TrackPressed(Listing::Library, 2));
         let _ = update(&mut app, Message::RepeatPressed);
 
         let effects = update(&mut app, Message::RepeatPressed);
@@ -1399,7 +1444,7 @@ mod tests {
     #[test]
     fn a_player_that_went_on_to_a_replaced_track_is_put_right() {
         let mut app = app_with_tracks(4);
-        let effects = update(&mut app, Message::TrackPressed(1));
+        let effects = update(&mut app, Message::TrackPressed(Listing::Library, 1));
         let stale = queued(&effects).unwrap().0;
 
         // Track 4 is put in front of 2, but the player had gone on to 2.
@@ -1419,7 +1464,7 @@ mod tests {
     #[test]
     fn the_next_track_follows_the_library() {
         let mut app = app_with_tracks(4);
-        let _ = update(&mut app, Message::TrackPressed(1));
+        let _ = update(&mut app, Message::TrackPressed(Listing::Library, 1));
 
         // Gone: the one behind it is next.
         let gone = absent(&app, 2);
@@ -1452,7 +1497,7 @@ mod tests {
                 _ => None,
             })
         };
-        let effects = update(&mut app, Message::TrackPressed(2));
+        let effects = update(&mut app, Message::TrackPressed(Listing::Library, 2));
         let (ticket, _) = loaded(&effects);
         let session = saved(&effects).expect("a new queue is saved");
         assert_eq!((session.order, session.current), (vec![1, 2, 3], Some(1)));
@@ -1507,7 +1552,7 @@ mod tests {
     #[test]
     fn the_next_launch_is_paused_where_the_last_run_was() {
         let mut app = app_with_tracks(6);
-        let effects = update(&mut app, Message::TrackPressed(3));
+        let effects = update(&mut app, Message::TrackPressed(Listing::Library, 3));
         let position = audio::Event::Position {
             ticket: loaded(&effects).0,
             position: Duration::from_secs(42),
@@ -1745,7 +1790,7 @@ mod tests {
                     entries[random(&mut seed, entries.len())].key
                 });
                 let message = match random(&mut seed, 24) {
-                    0 => Message::TrackPressed(track),
+                    0 => Message::TrackPressed(Listing::Library, track),
                     1 => Message::PlayNextPressed(track),
                     2 => Message::AddToQueuePressed(track),
                     3 => Message::QueueRemovePressed(entry.unwrap_or(0)),
@@ -1854,7 +1899,7 @@ mod tests {
     #[test]
     fn the_settings_tab_chooses_shuffle_repeat_and_its_category() {
         let mut app = app_with_tracks(10);
-        let _ = update(&mut app, Message::TrackPressed(1));
+        let _ = update(&mut app, Message::TrackPressed(Listing::Library, 1));
         let _ = update(&mut app, Message::ShuffleChosen(true));
         assert!(app.queue.shuffled());
         // Chosen again it stays on: a choice, not a toggle.
@@ -1882,6 +1927,10 @@ mod tests {
         assert!(effects.contains(&Effect::ApplyTheme(crate::theme::Id::Dracula)));
         assert_eq!(app.theme, crate::theme::Id::Dracula);
         let effects = update(&mut app, Message::ThemeChosen(crate::theme::Id::Dracula));
-        assert!(!effects.iter().any(|effect| matches!(effect, Effect::ApplyTheme(_))));
+        assert!(
+            !effects
+                .iter()
+                .any(|effect| matches!(effect, Effect::ApplyTheme(_)))
+        );
     }
 }

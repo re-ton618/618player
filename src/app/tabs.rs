@@ -3,15 +3,26 @@ use std::fmt;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum Kind {
     Library,
+    RecentlyAdded,
     NowPlaying,
     SongInformation,
     Settings,
 }
 
 impl Kind {
+    /// Every tab, in the order the + menu offers them.
+    pub(super) const ALL: [Self; 5] = [
+        Self::Library,
+        Self::RecentlyAdded,
+        Self::NowPlaying,
+        Self::SongInformation,
+        Self::Settings,
+    ];
+
     pub(super) const fn label(self) -> &'static str {
         match self {
             Self::Library => "Library",
+            Self::RecentlyAdded => "Recently Added",
             Self::NowPlaying => "Now Playing",
             Self::SongInformation => "Song Information",
             Self::Settings => "Settings",
@@ -21,6 +32,7 @@ impl Kind {
     pub(super) const fn slug(self) -> &'static str {
         match self {
             Self::Library => "library",
+            Self::RecentlyAdded => "recently-added",
             Self::NowPlaying => "now-playing",
             Self::SongInformation => "song-information",
             Self::Settings => "settings",
@@ -28,13 +40,7 @@ impl Kind {
     }
 
     pub(super) fn from_slug(slug: &str) -> Option<Self> {
-        match slug {
-            "library" => Some(Self::Library),
-            "now-playing" => Some(Self::NowPlaying),
-            "song-information" => Some(Self::SongInformation),
-            "settings" => Some(Self::Settings),
-            _ => None,
-        }
+        Self::ALL.into_iter().find(|kind| kind.slug() == slug)
     }
 }
 
@@ -265,6 +271,18 @@ mod tests {
         assert_eq!(tabs.active(), Some(L));
         let mut empty = state(&[], None);
         apply!(empty; Message::Cycle(Direction::Forward));
+    }
+
+    #[test]
+    fn every_kind_is_offered_once_and_its_slug_names_it() {
+        for kind in Kind::ALL {
+            // A kind left out of `ALL` stops this from compiling.
+            match kind {
+                L | Kind::RecentlyAdded | N | S | G => {}
+            }
+            assert_eq!(Kind::from_slug(kind.slug()), Some(kind));
+        }
+        assert!(State::from_parts(Kind::ALL.to_vec(), Some(L)).is_ok());
     }
 
     #[test]

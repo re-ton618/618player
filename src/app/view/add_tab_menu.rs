@@ -1,18 +1,11 @@
 use nsh_base::{menu, menu_item, theme};
 use nsh_core::prelude::*;
 
-use super::{workspace::TAB_STRIP_HEIGHT, BAR_ICON_SIZE};
+use super::{BAR_ICON_SIZE, workspace::TAB_STRIP_HEIGHT};
+use crate::app::Message;
 use crate::app::store::store;
 use crate::app::tabs::{Kind, Message as TabMessage};
-use crate::app::Message;
-use crate::ui::{chrome_glyph, Icon, Tone};
-
-const OPTIONS: [Kind; 4] = [
-    Kind::Library,
-    Kind::NowPlaying,
-    Kind::SongInformation,
-    Kind::Settings,
-];
+use crate::ui::{Icon, Tone, chrome_glyph};
 
 /// A menu row, and the menu's inset above and below its rows.
 const ROW_HEIGHT: f32 = 30.0;
@@ -59,5 +52,5 @@ pub(super) fn add_tab_menu() -> impl IntoElement {
                 .border_r_1()
                 .border_color(move || theme().border),
         )
-        .children(OPTIONS.map(item))
+        .children(Kind::ALL.map(item))
 }

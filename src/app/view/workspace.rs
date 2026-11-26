@@ -1,7 +1,9 @@
 use nsh_base::theme;
 use nsh_core::prelude::*;
 
-use super::{library, now_playing, settings, song_information, tab_strip};
+use super::track_list::track_list;
+use super::{now_playing, settings, song_information, tab_strip};
+use crate::app::listing::Listing;
 use crate::app::store::store;
 use crate::app::tabs::Kind;
 use crate::ui::strip;
@@ -19,9 +21,10 @@ pub(super) fn workspace() -> impl IntoElement {
         .flex_1()
         .min_h(px(0.0))
         .style_when(move || active.get() != Some(Kind::Library), |s| s.hidden())
-        .child(library::library());
+        .child(track_list(Listing::Library));
     let other = dynamic(move || match active.get() {
         Some(Kind::Library) => view().into_element(),
+        Some(Kind::RecentlyAdded) => track_list(Listing::RecentlyAdded).into_element(),
         Some(Kind::NowPlaying) => now_playing::now_playing().into_element(),
         Some(Kind::SongInformation) => song_information::song_information().into_element(),
         Some(Kind::Settings) => settings::settings().into_element(),
