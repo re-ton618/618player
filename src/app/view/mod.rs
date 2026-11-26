@@ -3,6 +3,7 @@ mod library;
 mod now_playing;
 mod playback;
 mod settings;
+mod song_information;
 mod tab_strip;
 mod top_bar;
 mod volume_control;

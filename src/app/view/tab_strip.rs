@@ -2,10 +2,10 @@ use nsh_base::theme;
 use nsh_core::prelude::*;
 
 use super::{add_tab_menu, workspace::TAB_STRIP_HEIGHT};
-use crate::app::Message;
-use crate::app::store::{Store, store};
+use crate::app::store::{store, Store};
 use crate::app::tabs::{Kind, Message as TabMessage, Side};
-use crate::ui::{Icon, Tone, chrome_button};
+use crate::app::Message;
+use crate::ui::{chrome_button, Icon, Tone};
 
 /// A tab, its right edge included: tabs are a fixed width so a drag can
 /// find the tab under the pointer.

@@ -8,7 +8,7 @@
 mod icons;
 mod menus;
 
-use nsh_base::{ButtonElement, button, theme};
+use nsh_base::{button, theme, ButtonElement};
 use nsh_core::prelude::*;
 
 pub(crate) use icons::Icon;
@@ -23,6 +23,15 @@ const STRIP_PADDING_X: f32 = 10.0;
 const STRIP_PADDING_Y: f32 = 5.0;
 /// A fitted label cell's inset in a bar.
 const LABEL_CELL_PADDING: f32 = 12.0;
+/// The edge that tells a meaningful strip from a plain one.
+const STRIP_EDGE_WIDTH: f32 = 3.0;
+/// The tint of a meaningful strip: 10% of its color.
+const STRIP_TINT: f32 = 0.1;
+/// A tooltip: at most 420 wide, inset 6 across and 4 down, 10pt.
+const HINT_MAX_WIDTH: f32 = 420.0;
+const HINT_PADDING_X: f32 = 6.0;
+const HINT_PADDING_Y: f32 = 4.0;
+const HINT_TEXT_SIZE: f32 = 10.0;
 
 /// The colors of a [`chrome_button`]: muted at rest, then on hover…
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,4 +159,43 @@ pub(crate) fn strip(said: &'static str) -> View {
                 .line_height(nsh_core::LineHeight::Multiple(1.5))
                 .text_color(move || theme().muted_foreground),
         )
+}
+
+/// A strip for what needs a look or is being waited for: a 3pt
+/// `warning` edge, a 10% tint of it, its text in it. The caller gives it
+/// the stack's line.
+pub(crate) fn warning_strip(said: impl IntoReactive<SharedString>) -> View {
+    view()
+        .w_full()
+        .flex_shrink_0()
+        .px(px(STRIP_PADDING_X))
+        .py(px(STRIP_PADDING_Y))
+        .border_l(px(STRIP_EDGE_WIDTH))
+        .border_l_color(tokens::warning)
+        .bg(move || tokens::warning().opacity(STRIP_TINT))
+        .role(AccessibilityRole::Text)
+        .child(
+            text(said)
+                .text_size(px(STRIP_TEXT_SIZE))
+                .line_height(nsh_core::LineHeight::Multiple(1.5))
+                .text_color(tokens::warning),
+        )
+}
+
+/// A tooltip: what an element's `.tooltip(..)` shows, as the full text of
+/// something cut short. A `popover` box with its line, 10pt text.
+pub(crate) fn hint(said: impl IntoReactive<SharedString>) -> AnyElement {
+    view()
+        .max_w(px(HINT_MAX_WIDTH))
+        .px(px(HINT_PADDING_X))
+        .py(px(HINT_PADDING_Y))
+        .bg(move || theme().popover)
+        .border_1()
+        .border_color(move || theme().border)
+        .child(
+            text(said)
+                .text_size(px(HINT_TEXT_SIZE))
+                .text_color(move || theme().popover_foreground),
+        )
+        .into_element()
 }

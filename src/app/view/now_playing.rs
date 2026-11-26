@@ -1,12 +1,12 @@
 use nsh_base::{button, theme};
 use nsh_core::prelude::*;
 
-use crate::app::Message;
 use crate::app::queue::Entry;
-use crate::app::store::{Store, store};
+use crate::app::store::{store, Store};
+use crate::app::Message;
 use crate::library::Track;
 use crate::theme as tokens;
-use crate::ui::{Icon, Tone, caption, chrome_button, chrome_text_button, strip};
+use crate::ui::{caption, chrome_button, chrome_text_button, strip, Icon, Tone};
 
 /// The section title: 28 and its bottom line, as the library's column
 /// titles are.

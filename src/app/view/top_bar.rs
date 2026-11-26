@@ -3,11 +3,11 @@ use nsh_core::desktop::WindowControl;
 use nsh_core::prelude::*;
 
 use super::{BAR_CELL_WIDTH, BAR_ICON_SIZE, TOP_BAR_HEIGHT};
-use crate::app::Message;
 use crate::app::store::store;
 use crate::app::tabs::{Kind, Message as TabMessage};
+use crate::app::Message;
 use crate::theme as tokens;
-use crate::ui::{Icon, Tone, bar_menu, chrome_button, chrome_glyph, chrome_text_glyph, menu_row};
+use crate::ui::{bar_menu, chrome_button, chrome_glyph, chrome_text_glyph, menu_row, Icon, Tone};
 
 /// The search cell, its edges included.
 const SEARCH_WIDTH: f32 = 300.0;

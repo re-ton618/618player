@@ -1,11 +1,11 @@
 use nsh_base::{menu, menu_item, theme};
 use nsh_core::prelude::*;
 
-use super::{BAR_ICON_SIZE, workspace::TAB_STRIP_HEIGHT};
-use crate::app::Message;
+use super::{workspace::TAB_STRIP_HEIGHT, BAR_ICON_SIZE};
 use crate::app::store::store;
 use crate::app::tabs::{Kind, Message as TabMessage};
-use crate::ui::{Icon, Tone, chrome_glyph};
+use crate::app::Message;
+use crate::ui::{chrome_glyph, Icon, Tone};
 
 const OPTIONS: [Kind; 4] = [
     Kind::Library,

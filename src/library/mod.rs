@@ -25,7 +25,7 @@ pub(crate) use artwork::load_embedded_data_uri;
 pub(crate) use catalog::Catalog;
 pub(crate) use filter::{SortColumn, SortDirection, matching_track_indices};
 pub(crate) use service::Library;
-pub(crate) use track::{Track, TrackUpdate};
+pub(crate) use track::{MetadataState, Track, TrackUpdate};
 
 /// A folder the library is made of.
 #[derive(Debug, Clone, PartialEq, Eq)]

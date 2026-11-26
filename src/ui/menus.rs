@@ -2,7 +2,7 @@
 //! that fill on hover as the bars' cells do.
 
 use nsh_base::{
-    ContextMenuElement, MenuElement, MenuItemElement, context_menu, menu, menu_item, theme,
+    context_menu, menu, menu_item, theme, ContextMenuElement, MenuElement, MenuItemElement,
 };
 use nsh_core::element::StyleRefinement;
 use nsh_core::prelude::*;

@@ -1,10 +1,10 @@
 use nsh_base::{button, theme};
 use nsh_core::prelude::*;
 
+use crate::app::store::{store, Store};
 use crate::app::Message;
-use crate::app::store::{Store, store};
 use crate::library::{SortColumn, SortDirection, Track};
-use crate::ui::{Icon, caption, menu_row, subject_menu};
+use crate::ui::{caption, menu_row, subject_menu, Icon};
 
 /// A track row, its bottom line included.
 const ROW_HEIGHT: f32 = 32.0;

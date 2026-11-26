@@ -1,9 +1,9 @@
-use nsh_base::{SliderValue, popover, slider, theme};
+use nsh_base::{popover, slider, theme, SliderValue};
 use nsh_core::geometry::Axis;
 use nsh_core::prelude::*;
 
-use crate::app::Message;
 use crate::app::store::store;
+use crate::app::Message;
 use crate::ui::caption;
 
 const POPUP_HEIGHT: f32 = 120.0;

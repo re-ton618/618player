@@ -1,14 +1,14 @@
-use nsh_base::{SliderValue, slider, theme};
+use nsh_base::{slider, theme, SliderValue};
 use nsh_core::element::ImageSrc;
 use nsh_core::prelude::*;
 
-use super::{BAR_CELL_WIDTH, BAR_ICON_SIZE, PLAYBACK_BAR_HEIGHT, volume_control};
-use crate::app::Message;
+use super::{volume_control, BAR_CELL_WIDTH, BAR_ICON_SIZE, PLAYBACK_BAR_HEIGHT};
 use crate::app::playback::Transport;
 use crate::app::queue::Repeat;
-use crate::app::store::{Store, store};
+use crate::app::store::{store, Store};
+use crate::app::Message;
 use crate::theme::CHROME_BORDER_WIDTH;
-use crate::ui::{Icon, Tone, caption, chrome_button};
+use crate::ui::{caption, chrome_button, Icon, Tone};
 
 /// The artwork fills the bar's height inside its border.
 const ARTWORK_SIZE: f32 = PLAYBACK_BAR_HEIGHT - 2.0 * CHROME_BORDER_WIDTH;
