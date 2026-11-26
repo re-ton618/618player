@@ -6,11 +6,11 @@ use nsh_base::{button, theme};
 use nsh_core::prelude::*;
 
 use super::format::timestamp;
-use crate::app::Message;
 use crate::app::listing::Listing;
-use crate::app::store::{Store, store};
+use crate::app::store::{store, Store};
+use crate::app::Message;
 use crate::library::{SortColumn, SortDirection, Track};
-use crate::ui::{Icon, caption, menu_row, subject_menu};
+use crate::ui::{caption, menu_divider, menu_row, menu_submenu, subject_menu, Icon};
 
 /// A track row, its bottom line included.
 const ROW_HEIGHT: f32 = 32.0;
@@ -93,7 +93,7 @@ const RECENTLY_ADDED_COLUMNS: &[Column] = &[TITLE, ARTIST, ALBUM, ADDED, TIME];
 
 const fn columns(listing: Listing) -> &'static [Column] {
     match listing {
-        Listing::Library => LIBRARY_COLUMNS,
+        Listing::Library | Listing::Playlist => LIBRARY_COLUMNS,
         Listing::RecentlyAdded => RECENTLY_ADDED_COLUMNS,
     }
 }
@@ -146,7 +146,7 @@ fn header(store: Store, listing: Listing) -> impl IntoElement {
                        }: &Column| {
         let marker = move |direction, icon: Icon| {
             when(
-                move || sort.get() == (by, direction),
+                move || sort.get() == Some((by, direction)),
                 move || {
                     icon.view(SORT_ICON_SIZE)
                         .text_color(move || theme().muted_foreground)
@@ -196,7 +196,8 @@ fn header(store: Store, listing: Listing) -> impl IntoElement {
 
 /// A cell of the list: it shows whichever row it is given. A line with
 /// its bottom edge; the current track is `card` with accent text. A press
-/// plays it; the secondary button opens the menu that queues it.
+/// plays it; the secondary button opens the menu that queues it, puts it
+/// in a playlist, or takes it out of the one listed.
 fn track_row(store: Store, listing: Listing, at: Position) -> impl IntoElement {
     let row = store.select(move |model| {
         model
@@ -260,6 +261,33 @@ fn track_row(store: Store, listing: Listing, at: Position) -> impl IntoElement {
                 .map(|(index, column)| cell(index, column.width)),
         );
 
+    let playlists = store.select(|model| {
+        model
+            .playlists
+            .list()
+            .iter()
+            .map(|playlist| (playlist.id, SharedString::from(playlist.name.clone())))
+            .collect::<Vec<_>>()
+    });
+    let add_to_playlist = menu_submenu("Add to Playlist")
+        .child(menu_row("New Playlist\u{2026}", move || {
+            ask(&|id| Message::NewPlaylistPressed(vec![id]))
+        }))
+        .child(when(
+            move || playlists.with(|list| !list.is_empty()),
+            menu_divider,
+        ))
+        .child(each(
+            playlists,
+            |entry: &(i64, SharedString)| entry.clone(),
+            move |entry, _| {
+                let (playlist, name) = entry.get_untracked();
+                menu_row(name, move || {
+                    ask(&|track| Message::AddToPlaylistPressed { playlist, track })
+                })
+            },
+        ));
+
     subject_menu(line)
         .child(menu_row("Play Next", move || {
             ask(&Message::PlayNextPressed)
@@ -267,4 +295,11 @@ fn track_row(store: Store, listing: Listing, at: Position) -> impl IntoElement {
         .child(menu_row("Add to Queue", move || {
             ask(&Message::AddToQueuePressed)
         }))
+        .child(menu_divider())
+        .child(add_to_playlist)
+        .when(listing == Listing::Playlist, |menu| {
+            menu.child(menu_row("Remove from Playlist", move || {
+                ask(&Message::RemoveFromPlaylistPressed)
+            }))
+        })
 }

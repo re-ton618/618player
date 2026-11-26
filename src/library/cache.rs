@@ -8,11 +8,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use rusqlite::types::ValueRef;
-use rusqlite::{Connection, Row, params};
+use rusqlite::{Connection, Row, Transaction, params};
 
 use super::metadata::MetadataJob;
 use super::migrations;
 use super::scanner::{DiscoveredTrack, is_within, path_key, supports_embedded_metadata};
+use super::Playlist;
 use super::track::{FileRecord, Metadata, MetadataState, ReplayGain, Track, TrackUpdate};
 
 pub(super) type CacheResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
@@ -146,6 +147,116 @@ impl Cache {
         }
         removed.sort_unstable_by_key(|track| track.id);
         Ok(removed)
+    }
+
+    /// Every playlist, by name, each with its tracks in their order.
+    pub(super) fn playlists(&self) -> CacheResult<Vec<Playlist>> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT id, name FROM playlists ORDER BY name COLLATE NOCASE, id")?;
+        let mut playlists: Vec<Playlist> = statement
+            .query_map([], |row| {
+                Ok(Playlist {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    tracks: Vec::new(),
+                })
+            })?
+            .collect::<Result<_, _>>()?;
+        let at: HashMap<i64, usize> = playlists
+            .iter()
+            .enumerate()
+            .map(|(index, playlist)| (playlist.id, index))
+            .collect();
+        let mut statement = self.connection.prepare(
+            "SELECT playlist_id, track_id FROM playlist_tracks ORDER BY playlist_id, position",
+        )?;
+        let rows = statement.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get(1)?)))?;
+        for row in rows {
+            let (playlist, track) = row?;
+            if let Some(&index) = at.get(&playlist) {
+                playlists[index].tracks.push(track);
+            }
+        }
+        Ok(playlists)
+    }
+
+    /// Makes a playlist of `name` holding `tracks` (those the library
+    /// knows, each once), and gives its id.
+    pub(super) fn create_playlist(&mut self, name: &str, tracks: &[i64]) -> CacheResult<i64> {
+        let mut order = Vec::new();
+        self.append_known(&mut order, tracks);
+        let transaction = self.connection.transaction()?;
+        let id = transaction.query_row(
+            "INSERT INTO playlists (name) VALUES (?1) RETURNING id",
+            [name],
+            |row| row.get(0),
+        )?;
+        write_playlist(&transaction, id, &order)?;
+        transaction.commit()?;
+        Ok(id)
+    }
+
+    pub(super) fn rename_playlist(&mut self, id: i64, name: &str) -> CacheResult<()> {
+        self.connection.execute(
+            "UPDATE playlists SET name = ?2, updated_at = unixepoch() WHERE id = ?1",
+            params![id, name],
+        )?;
+        Ok(())
+    }
+
+    /// Takes the playlist away; its tracks stay in the library.
+    pub(super) fn delete_playlist(&mut self, id: i64) -> CacheResult<()> {
+        // Its `playlist_tracks` go with it (`ON DELETE CASCADE`).
+        self.connection
+            .execute("DELETE FROM playlists WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// Adds `tracks` to the end of the playlist; one it holds already
+    /// stays where it is.
+    pub(super) fn add_to_playlist(&mut self, id: i64, tracks: &[i64]) -> CacheResult<()> {
+        let mut order = self.playlist_tracks(id)?;
+        let before = order.len();
+        self.append_known(&mut order, tracks);
+        if order.len() == before {
+            return Ok(());
+        }
+        let transaction = self.connection.transaction()?;
+        write_playlist(&transaction, id, &order)?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub(super) fn remove_from_playlist(&mut self, id: i64, track: i64) -> CacheResult<()> {
+        let mut order = self.playlist_tracks(id)?;
+        let before = order.len();
+        order.retain(|&held| held != track);
+        if order.len() == before {
+            return Ok(());
+        }
+        let transaction = self.connection.transaction()?;
+        write_playlist(&transaction, id, &order)?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    fn playlist_tracks(&self, id: i64) -> CacheResult<Vec<i64>> {
+        let mut statement = self.connection.prepare(
+            "SELECT track_id FROM playlist_tracks WHERE playlist_id = ?1 ORDER BY position",
+        )?;
+        let rows = statement.query_map([id], |row| row.get(0))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Puts after `order` the tracks of `tracks` the library knows and
+    /// `order` does not hold yet.
+    fn append_known(&self, order: &mut Vec<i64>, tracks: &[i64]) {
+        for &track in tracks {
+            if self.tracks.contains_key(&track) && !order.contains(&track) {
+                order.push(track);
+            }
+        }
     }
 
     /// Every track the database has, absent ones too.
@@ -620,6 +731,26 @@ fn write_records(
         }
     }
     transaction.commit()
+}
+
+/// Makes `tracks` the whole of the playlist of `id`, in their order; a
+/// playlist that is gone is left so.
+fn write_playlist(transaction: &Transaction<'_>, id: i64, tracks: &[i64]) -> rusqlite::Result<()> {
+    let touched = transaction.execute(
+        "UPDATE playlists SET updated_at = unixepoch() WHERE id = ?1",
+        [id],
+    )?;
+    if touched == 0 {
+        return Ok(());
+    }
+    transaction.execute("DELETE FROM playlist_tracks WHERE playlist_id = ?1", [id])?;
+    let mut insert = transaction.prepare(
+        "INSERT INTO playlist_tracks (playlist_id, track_id, position) VALUES (?1, ?2, ?3)",
+    )?;
+    for (position, track) in tracks.iter().enumerate() {
+        insert.execute(params![id, track, position as i64])?;
+    }
+    Ok(())
 }
 
 fn to_i64(value: u64) -> i64 {
@@ -1285,6 +1416,66 @@ mod tests {
         drop(cache);
         let cache = Cache::open_at(&root.join("library.sqlite3"))?;
         assert_eq!(cache.tracks()[0].path, audio_path);
+        Ok(())
+    }
+
+    #[test]
+    fn playlists_keep_their_tracks_in_order_once_each_and_survive_a_reopen() -> CacheResult<()> {
+        let (directory, mut cache, folder) = library()?;
+        let root = directory.path();
+        let scanned = scan(
+            &mut cache,
+            folder,
+            root,
+            ["a.mp3", "b.mp3", "c.mp3"]
+                .iter()
+                .enumerate()
+                .map(|(index, name)| file(root, name, 10 + index as u64, None))
+                .collect(),
+        );
+        let mut ids: Vec<i64> = scanned.changed.iter().map(|track| track.id).collect();
+        ids.sort_unstable();
+        let [a, b, c] = ids[..] else {
+            panic!("three tracks")
+        };
+
+        // A track the library does not know is left out, a repeat too.
+        let road = cache.create_playlist("road trip", &[c, a, c, 999])?;
+        let chill = cache.create_playlist("Chill", &[])?;
+        cache.add_to_playlist(road, &[a, b])?;
+        cache.add_to_playlist(chill, &[b])?;
+        let names = |cache: &Cache| -> CacheResult<Vec<(String, Vec<i64>)>> {
+            Ok(cache
+                .playlists()?
+                .into_iter()
+                .map(|playlist| (playlist.name, playlist.tracks))
+                .collect())
+        };
+        // By name, whatever its case.
+        assert_eq!(
+            names(&cache)?,
+            [
+                ("Chill".to_owned(), vec![b]),
+                ("road trip".to_owned(), vec![c, a, b])
+            ]
+        );
+
+        cache.remove_from_playlist(road, a)?;
+        cache.rename_playlist(road, "Road Trip")?;
+        cache.delete_playlist(chill)?;
+        // A playlist that is gone takes nothing.
+        cache.add_to_playlist(chill, &[a])?;
+        drop(cache);
+        let cache = Cache::open_at(&root.join("library.sqlite3"))?;
+        assert_eq!(names(&cache)?, [("Road Trip".to_owned(), vec![c, b])]);
+        assert_eq!(
+            cache.connection.query_row(
+                "SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id = ?1",
+                [chill],
+                |row| row.get::<_, u32>(0),
+            )?,
+            0
+        );
         Ok(())
     }
 }

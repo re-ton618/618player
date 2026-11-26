@@ -5,7 +5,7 @@ use nsh_core::file_dialog::OpenDialog;
 use nsh_core::prelude::*;
 use tokio::sync::mpsc::unbounded_channel;
 
-use super::{Effect, Listing, Message, Model, playback, session, update};
+use super::{Effect, Listing, Message, Model, playback, playlists, session, update};
 use crate::audio;
 use crate::library::{self, Library};
 
@@ -79,7 +79,18 @@ impl Store {
         self.model.update(|model| effects = update(model, message));
         for effect in effects {
             match effect {
-                Effect::LoadArtwork(request) => self.load_artwork(request),
+                Effect::LoadArtwork(playback::ArtworkRequest { request_id, path }) => {
+                    self.load_artwork(path, move |result| Message::ArtworkLoaded {
+                        request_id,
+                        result,
+                    });
+                }
+                Effect::LoadPlaylistArtwork(playlists::ArtworkRequest { request_id, path }) => {
+                    self.load_artwork(path, move |result| Message::PlaylistArtworkLoaded {
+                        request_id,
+                        result,
+                    });
+                }
                 Effect::ScrollToTop(listing) => {
                     self.list(listing).scroll_to_offset(px(0.0), false);
                 }
@@ -98,9 +109,14 @@ impl Store {
         }
     }
 
-    fn load_artwork(&self, request: playback::ArtworkRequest) {
+    /// Reads the artwork embedded in the file at `path` off the UI thread,
+    /// and tells what came of it in the message `done` makes.
+    fn load_artwork(
+        &self,
+        path: std::path::PathBuf,
+        done: impl FnOnce(Result<Option<SharedString>, String>) -> Message + 'static,
+    ) {
         let store = *self;
-        let playback::ArtworkRequest { request_id, path } = request;
         spawn(async move {
             let result = blocking(move || {
                 library::load_embedded_data_uri(&path)
@@ -109,7 +125,7 @@ impl Store {
             })
             .await
             .unwrap_or_else(|error| Err(error.to_string()));
-            store.dispatch(Message::ArtworkLoaded { request_id, result });
+            store.dispatch(done(result));
         });
     }
 

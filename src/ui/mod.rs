@@ -13,7 +13,7 @@ use nsh_base::{theme, ButtonElement};
 use nsh_core::prelude::*;
 
 pub(crate) use icons::Icon;
-pub(crate) use menus::{bar_menu, menu_row, subject_menu};
+pub(crate) use menus::{bar_menu, menu_divider, menu_row, menu_submenu, subject_menu};
 pub(crate) use rows::{button, choice, label_column_row, section_title, ROW_HEIGHT};
 
 use crate::theme as tokens;

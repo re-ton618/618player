@@ -15,6 +15,19 @@ pub(super) fn file_size(bytes: u64) -> String {
     format!("{value:.1} {}", UNITS[unit])
 }
 
+/// A length of time as people say it, to the minute past one: "2 hr 13
+/// min", "48 min", "35 sec".
+pub(super) fn total_duration(milliseconds: u64) -> String {
+    let seconds = milliseconds / 1_000;
+    let (hours, minutes) = (seconds / 3_600, seconds / 60 % 60);
+    match (hours, minutes) {
+        (0, 0) => format!("{seconds} sec"),
+        (0, minutes) => format!("{minutes} min"),
+        (hours, 0) => format!("{hours} hr"),
+        (hours, minutes) => format!("{hours} hr {minutes} min"),
+    }
+}
+
 /// A time in nanoseconds since 1970, in UTC: "2023-11-14 22:13 UTC".
 /// None for one at or before 1970, which no file was written at.
 pub(super) fn timestamp(nanoseconds: i64) -> Option<String> {
@@ -66,5 +79,9 @@ mod tests {
         );
         assert_eq!(civil_from_days(-1), (1969, 12, 31));
         assert_eq!(civil_from_days(11_016), (2000, 2, 29));
+        assert_eq!(total_duration(35_999), "35 sec");
+        assert_eq!(total_duration(48 * 60_000 + 59_000), "48 min");
+        assert_eq!(total_duration(7_200_000), "2 hr");
+        assert_eq!(total_duration(7_980_000), "2 hr 13 min");
     }
 }

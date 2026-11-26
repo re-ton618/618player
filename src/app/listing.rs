@@ -8,10 +8,12 @@ pub(super) enum Listing {
     Library,
     /// The last added first.
     RecentlyAdded,
+    /// The playlist the Playlists tab shows, in its own order.
+    Playlist,
 }
 
 impl Listing {
-    pub(super) const ALL: [Self; 2] = [Self::Library, Self::RecentlyAdded];
+    pub(super) const ALL: [Self; 3] = [Self::Library, Self::RecentlyAdded, Self::Playlist];
     pub(super) const COUNT: usize = Self::ALL.len();
 
     /// Its place in [`Self::ALL`], and in what is kept per listing.

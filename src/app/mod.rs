@@ -1,6 +1,7 @@
 mod input;
 mod listing;
 mod playback;
+mod playlists;
 mod queue;
 mod session;
 mod settings_tab;
@@ -66,6 +67,8 @@ pub(crate) struct Model {
     resume_at: Option<u64>,
     /// What of the session was last given out to be saved.
     saved: Saved,
+    /// The user's playlists, and what the Playlists tab shows of them.
+    playlists: playlists::State,
 }
 
 /// What tells that the session differs from the one that was saved.
@@ -96,6 +99,7 @@ impl Default for Model {
             playback_failures: 0,
             resume_at: None,
             saved: Saved::default(),
+            playlists: playlists::State::default(),
         };
         model.saved = model.unsaved();
         model
@@ -152,6 +156,28 @@ enum Message {
     SettingsCategoryPressed(settings_tab::Category),
     /// A theme was chosen (the Settings tab).
     ThemeChosen(crate::theme::Id),
+    /// The Playlists tab is to show the playlist of this id.
+    PlaylistChosen(i64),
+    /// The naming prompt is to ask for a new playlist's name; the
+    /// playlist will hold these tracks.
+    NewPlaylistPressed(Vec<i64>),
+    /// The naming prompt is to ask for a new name for this playlist.
+    RenamePlaylistPressed(i64),
+    /// The user said to delete the playlist of this id, and was sure.
+    DeletePlaylistConfirmed(i64),
+    AddToPlaylistPressed {
+        playlist: i64,
+        track: i64,
+    },
+    /// The track is to leave the playlist the Playlists tab shows.
+    RemoveFromPlaylistPressed(i64),
+    PromptNameChanged(String),
+    PromptConfirmed,
+    PromptCancelled,
+    PlaylistArtworkLoaded {
+        request_id: u64,
+        result: Result<Option<SharedString>, String>,
+    },
     /// The window is about to close.
     Closing,
 }
@@ -160,6 +186,8 @@ enum Message {
 #[derive(Debug, PartialEq, Eq)]
 enum Effect {
     LoadArtwork(playback::ArtworkRequest),
+    /// Reads the artwork the Playlists tab shows.
+    LoadPlaylistArtwork(playlists::ArtworkRequest),
     ScrollToTop(Listing),
     Player(audio::Command),
     /// Shows the system's folder dialog; the choice comes back as
@@ -182,6 +210,7 @@ fn update(model: &mut Model, message: Message) -> Vec<Effect> {
     let closing = matches!(message, Message::Closing);
     let mut effects = model.handle(message);
     effects.extend(model.sync_queued());
+    effects.extend(model.sync_playlist_artwork());
     effects.extend(model.save_session(closing));
     effects
 }
@@ -212,6 +241,14 @@ impl Model {
                 LibraryEvent::Complete => {
                     self.rebuild_projection();
                     self.catalog = Catalog::of(&self.tracks);
+                }
+                LibraryEvent::Playlists(list) => {
+                    let shown = self.playlists.chosen().map(|playlist| playlist.id);
+                    self.playlists.set(list);
+                    self.rebuild_playlist_rows();
+                    if self.playlists.chosen().map(|playlist| playlist.id) != shown {
+                        return vec![Effect::ScrollToTop(Listing::Playlist)];
+                    }
                 }
                 LibraryEvent::Failed(error) => eprintln!("Library failed: {error}"),
             },
@@ -405,6 +442,55 @@ impl Model {
                     return vec![Effect::ApplyTheme(theme)];
                 }
             }
+            Message::PlaylistChosen(id) => {
+                if self.playlists.choose(id) {
+                    self.rebuild_playlist_rows();
+                    return vec![Effect::ScrollToTop(Listing::Playlist)];
+                }
+            }
+            Message::NewPlaylistPressed(tracks) => {
+                self.playlists.prompt = Some(playlists::Prompt {
+                    purpose: playlists::Purpose::Create(tracks),
+                    name: String::new(),
+                });
+            }
+            Message::RenamePlaylistPressed(id) => {
+                if let Some(playlist) = self.playlists.find(id) {
+                    self.playlists.prompt = Some(playlists::Prompt {
+                        purpose: playlists::Purpose::Rename(id),
+                        name: playlist.name.clone(),
+                    });
+                }
+            }
+            Message::DeletePlaylistConfirmed(playlist) => {
+                return vec![Effect::Library(LibraryCommand::DeletePlaylist(playlist))];
+            }
+            Message::AddToPlaylistPressed { playlist, track } => {
+                if self.track_positions.contains_key(&track) {
+                    return vec![Effect::Library(LibraryCommand::AddToPlaylist {
+                        playlist,
+                        tracks: vec![track],
+                    })];
+                }
+            }
+            Message::RemoveFromPlaylistPressed(track) => {
+                if let Some(playlist) = self.playlists.chosen() {
+                    return vec![Effect::Library(LibraryCommand::RemoveFromPlaylist {
+                        playlist: playlist.id,
+                        track,
+                    })];
+                }
+            }
+            Message::PromptNameChanged(name) => {
+                if let Some(prompt) = &mut self.playlists.prompt {
+                    prompt.name = name;
+                }
+            }
+            Message::PromptConfirmed => return self.confirm_prompt(),
+            Message::PromptCancelled => self.playlists.prompt = None,
+            Message::PlaylistArtworkLoaded { request_id, result } => {
+                self.playlists.art_loaded(request_id, result);
+            }
             // The session is given out by `update`.
             Message::Closing => {}
         }
@@ -502,6 +588,50 @@ impl Model {
         due.then(|| {
             self.saved = now;
             Effect::SaveSession(self.session())
+        })
+    }
+
+    /// The naming prompt's name, when it has one, makes the playlist or
+    /// renames it, and the prompt goes.
+    fn confirm_prompt(&mut self) -> Vec<Effect> {
+        let Some(prompt) = self.playlists.prompt.take() else {
+            return Vec::new();
+        };
+        let name = prompt.name.trim().to_owned();
+        if name.is_empty() {
+            self.playlists.prompt = Some(prompt);
+            return Vec::new();
+        }
+        let command = match prompt.purpose {
+            playlists::Purpose::Create(tracks) => LibraryCommand::CreatePlaylist { name, tracks },
+            playlists::Purpose::Rename(playlist) => {
+                LibraryCommand::RenamePlaylist { playlist, name }
+            }
+        };
+        vec![Effect::Library(command)]
+    }
+
+    /// Has the Playlists tab's artwork be of the first track of its
+    /// playlist that is there.
+    fn sync_playlist_artwork(&mut self) -> Option<Effect> {
+        let first = self
+            .playlists
+            .chosen()
+            .and_then(|playlist| playlist.tracks.iter().find_map(|&id| self.playable(id)))
+            .map(|position| self.tracks[position].path.clone());
+        self.playlists
+            .show_art(first.as_deref())
+            .map(Effect::LoadPlaylistArtwork)
+    }
+
+    /// What the Playlists tab's header tells of its playlist.
+    fn playlist_summary(&self) -> Option<playlists::Summary> {
+        self.playlists.chosen().map(|playlist| {
+            playlists::Summary::of(playlist, |id| {
+                self.track_positions
+                    .get(&id)
+                    .map(|&position| &self.tracks[position])
+            })
         })
     }
 
@@ -718,11 +848,13 @@ impl Model {
             .map(|&position| &self.tracks[position])
     }
 
-    /// The order `listing` is in: the library's is the user's choice.
-    fn sort_of(&self, listing: Listing) -> (SortColumn, SortDirection) {
+    /// The order `listing` is in: the library's is the user's choice; a
+    /// playlist is in its own (none).
+    fn sort_of(&self, listing: Listing) -> Option<(SortColumn, SortDirection)> {
         match listing {
-            Listing::Library => (self.sort_column, self.sort_direction),
-            Listing::RecentlyAdded => (SortColumn::Added, SortDirection::Descending),
+            Listing::Library => Some((self.sort_column, self.sort_direction)),
+            Listing::RecentlyAdded => Some((SortColumn::Added, SortDirection::Descending)),
+            Listing::Playlist => None,
         }
     }
 
@@ -738,15 +870,35 @@ impl Model {
     }
 
     fn rebuild_projection(&mut self) {
-        self.listed = Listing::ALL.map(|listing| {
-            let (column, direction) = self.sort_of(listing);
-            crate::library::matching_track_indices(
+        self.listed = Listing::ALL.map(|listing| match self.sort_of(listing) {
+            Some((column, direction)) => crate::library::matching_track_indices(
                 &self.tracks,
                 &self.search_query,
                 column,
                 direction,
-            )
+            ),
+            None => self.playlist_rows(),
         });
+    }
+
+    fn rebuild_playlist_rows(&mut self) {
+        self.listed[Listing::Playlist.index()] = self.playlist_rows();
+    }
+
+    /// Where in `tracks` the shown playlist's tracks that are there and
+    /// match the search are, in its order.
+    fn playlist_rows(&self) -> Vec<usize> {
+        let Some(playlist) = self.playlists.chosen() else {
+            return Vec::new();
+        };
+        crate::library::matching_in_order(
+            &self.tracks,
+            playlist
+                .tracks
+                .iter()
+                .filter_map(|id| self.track_positions.get(id).copied()),
+            &self.search_query,
+        )
     }
 }
 
@@ -1932,5 +2084,158 @@ mod tests {
                 .iter()
                 .any(|effect| matches!(effect, Effect::ApplyTheme(_)))
         );
+    }
+
+    fn playlist(id: i64, name: &str, tracks: &[i64]) -> crate::library::Playlist {
+        crate::library::Playlist {
+            id,
+            name: name.to_owned(),
+            tracks: tracks.to_vec(),
+        }
+    }
+
+    /// What `effects` ask of the library.
+    fn library_commands(effects: &[Effect]) -> Vec<&LibraryCommand> {
+        effects
+            .iter()
+            .filter_map(|effect| match effect {
+                Effect::Library(command) => Some(command),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_prompt_makes_a_playlist_of_the_track_once_it_has_a_name() {
+        let mut app = app_with_three_tracks();
+        let _ = update(&mut app, Message::NewPlaylistPressed(vec![2]));
+        let _ = update(&mut app, Message::PromptNameChanged("   ".into()));
+        // A name of nothing but spaces makes nothing, and the prompt stays.
+        assert!(library_commands(&update(&mut app, Message::PromptConfirmed)).is_empty());
+        assert!(app.playlists.prompt.is_some());
+
+        let _ = update(&mut app, Message::PromptNameChanged(" Road Trip ".into()));
+        let effects = update(&mut app, Message::PromptConfirmed);
+        assert_eq!(
+            library_commands(&effects),
+            [&LibraryCommand::CreatePlaylist {
+                name: "Road Trip".into(),
+                tracks: vec![2],
+            }]
+        );
+        assert!(app.playlists.prompt.is_none());
+
+        let _ = update(
+            &mut app,
+            Message::LibraryEvent(LibraryEvent::Playlists(vec![playlist(
+                7,
+                "Road Trip",
+                &[2],
+            )])),
+        );
+        let _ = update(&mut app, Message::RenamePlaylistPressed(7));
+        assert_eq!(
+            app.playlists
+                .prompt
+                .as_ref()
+                .map(|prompt| prompt.name.as_str()),
+            Some("Road Trip")
+        );
+        let _ = update(&mut app, Message::PromptCancelled);
+        assert!(app.playlists.prompt.is_none());
+    }
+
+    #[test]
+    fn a_track_goes_into_a_playlist_and_out_of_the_one_shown() {
+        let mut app = app_with_three_tracks();
+        let effects = update(
+            &mut app,
+            Message::AddToPlaylistPressed {
+                playlist: 7,
+                track: 3,
+            },
+        );
+        assert_eq!(
+            library_commands(&effects),
+            [&LibraryCommand::AddToPlaylist {
+                playlist: 7,
+                tracks: vec![3],
+            }]
+        );
+        // A track the library does not know goes nowhere.
+        let effects = update(
+            &mut app,
+            Message::AddToPlaylistPressed {
+                playlist: 7,
+                track: 99,
+            },
+        );
+        assert!(library_commands(&effects).is_empty());
+
+        let _ = update(
+            &mut app,
+            Message::LibraryEvent(LibraryEvent::Playlists(vec![
+                playlist(7, "A", &[3]),
+                playlist(8, "B", &[1]),
+            ])),
+        );
+        let _ = update(&mut app, Message::PlaylistChosen(8));
+        let effects = update(&mut app, Message::RemoveFromPlaylistPressed(1));
+        assert_eq!(
+            library_commands(&effects),
+            [&LibraryCommand::RemoveFromPlaylist {
+                playlist: 8,
+                track: 1,
+            }]
+        );
+    }
+
+    #[test]
+    fn the_shown_playlist_lists_its_tracks_in_its_order_with_its_first_tracks_artwork() {
+        let mut app = app_with_three_tracks();
+        let effects = update(
+            &mut app,
+            Message::LibraryEvent(LibraryEvent::Playlists(vec![
+                playlist(7, "A", &[3, 1, 99]),
+                playlist(8, "B", &[]),
+            ])),
+        );
+        let listed = |app: &Model| app.listed_tracks(Listing::Playlist);
+        assert_eq!(listed(&app), [3, 1]);
+        let request = effects
+            .iter()
+            .find_map(|effect| match effect {
+                Effect::LoadPlaylistArtwork(request) => Some(request.clone()),
+                _ => None,
+            })
+            .expect("the first track's artwork is read");
+        assert_eq!(request.path, track_path(3));
+        let _ = update(
+            &mut app,
+            Message::PlaylistArtworkLoaded {
+                request_id: request.request_id,
+                result: Ok(Some("data:art".into())),
+            },
+        );
+        assert_eq!(
+            app.playlists.art().map(|art| art.to_string()),
+            Some("data:art".to_owned())
+        );
+
+        let _ = update(&mut app, Message::SearchChanged("Track 001".into()));
+        assert_eq!(listed(&app), [1]);
+        let _ = update(&mut app, Message::SearchChanged(String::new()));
+
+        // Pressed, its track plays with the playlist as the queue.
+        let _ = update(&mut app, Message::TrackPressed(Listing::Playlist, 1));
+        assert_eq!(queued_ids(&app), [3, 1]);
+        assert_eq!(current_id(&app), Some(1));
+
+        let effects = update(&mut app, Message::PlaylistChosen(8));
+        assert!(effects.contains(&Effect::ScrollToTop(Listing::Playlist)));
+        assert!(listed(&app).is_empty());
+        assert!(app.playlists.art().is_none());
+        let summary = app.playlist_summary().unwrap();
+        assert_eq!((summary.tracks, summary.missing), (0, 0));
     }
 }

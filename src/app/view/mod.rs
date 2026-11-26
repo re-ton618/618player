@@ -2,6 +2,8 @@ mod add_tab_menu;
 mod format;
 mod now_playing;
 mod playback;
+mod playlist_prompt;
+mod playlists;
 mod settings;
 mod song_information;
 mod tab_strip;
@@ -44,4 +46,5 @@ pub(crate) fn root() -> impl IntoElement {
                 .child(playback::playback_bar()),
         )
         .child(window_frame::resize_edges())
+        .child(playlist_prompt::playlist_prompt())
 }

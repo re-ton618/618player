@@ -2,7 +2,8 @@
 //! that fill on hover as the bars' cells do.
 
 use nsh_base::{
-    context_menu, menu, menu_item, theme, ContextMenuElement, MenuElement, MenuItemElement,
+    context_menu, menu, menu_item, menu_separator, submenu, theme, ContextMenuElement, MenuElement,
+    MenuItemElement, MenuSeparatorElement, SubmenuElement,
 };
 use nsh_core::element::StyleRefinement;
 use nsh_core::prelude::*;
@@ -17,7 +18,11 @@ const MENU_WIDTH: f32 = 180.0;
 const MENU_OFFSET: f32 = 1.0;
 
 /// A row of a menu, which closes it and runs `on_select`.
-pub(crate) fn menu_row(label: &'static str, on_select: impl Fn() + 'static) -> MenuItemElement {
+pub(crate) fn menu_row(
+    label: impl Into<SharedString>,
+    on_select: impl Fn() + 'static,
+) -> MenuItemElement {
+    let label: SharedString = label.into();
     menu_item()
         .on_select(on_select)
         .h(px(ROW_HEIGHT))
@@ -33,6 +38,40 @@ pub(crate) fn menu_row(label: &'static str, on_select: impl Fn() + 'static) -> M
                 .number_of_lines(1)
                 .text_color(move || theme().popover_foreground),
         )
+}
+
+/// A row of a menu that opens the menu beside it, which the caller gives
+/// its rows ([`menu_row`]); it ends with a chevron.
+pub(crate) fn menu_submenu(label: &'static str) -> SubmenuElement {
+    submenu().trigger(
+        view()
+            .h(px(ROW_HEIGHT))
+            .flex_row()
+            .items_center()
+            .gap(px(ROW_PADDING))
+            .px(px(ROW_PADDING))
+            .hover(|s| s.bg(move || theme().card))
+            .child(
+                text(label)
+                    .flex_1()
+                    .text_size(px(ROW_TEXT_SIZE))
+                    .number_of_lines(1)
+                    .text_color(move || theme().popover_foreground),
+            )
+            .child(
+                text("\u{203a}")
+                    .text_size(px(ROW_TEXT_SIZE))
+                    .text_color(move || theme().muted_foreground),
+            ),
+    )
+}
+
+/// The line between groups of a menu's rows.
+pub(crate) fn menu_divider() -> MenuSeparatorElement {
+    menu_separator()
+        .h(px(1.0))
+        .my(px(MENU_PADDING))
+        .bg(move || theme().border)
 }
 
 /// A menu hanging from `trigger`, a cell of a bar; the caller gives it its

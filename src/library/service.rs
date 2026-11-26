@@ -102,6 +102,7 @@ fn run(
     };
 
     service.emit(LibraryEvent::Loaded(service.cache.tracks()));
+    service.refresh_playlists();
     service.refresh_folders();
     service.scan_everything();
     service.settle();
@@ -193,6 +194,42 @@ impl<E: FnMut(LibraryEvent) -> bool> Service<E> {
                 }
                 Err(error) => self.fail(error),
             },
+            LibraryCommand::CreatePlaylist { name, tracks } => {
+                let done = self.cache.create_playlist(&name, &tracks).map(drop);
+                self.playlists_changed(done);
+            }
+            LibraryCommand::RenamePlaylist { playlist, name } => {
+                let done = self.cache.rename_playlist(playlist, &name);
+                self.playlists_changed(done);
+            }
+            LibraryCommand::DeletePlaylist(playlist) => {
+                let done = self.cache.delete_playlist(playlist);
+                self.playlists_changed(done);
+            }
+            LibraryCommand::AddToPlaylist { playlist, tracks } => {
+                let done = self.cache.add_to_playlist(playlist, &tracks);
+                self.playlists_changed(done);
+            }
+            LibraryCommand::RemoveFromPlaylist { playlist, track } => {
+                let done = self.cache.remove_from_playlist(playlist, track);
+                self.playlists_changed(done);
+            }
+        }
+    }
+
+    /// Tells the app the playlists as they are after a change to them,
+    /// and what went wrong with it.
+    fn playlists_changed(&mut self, done: CacheResult<()>) {
+        if let Err(error) = done {
+            self.fail(error);
+        }
+        self.refresh_playlists();
+    }
+
+    fn refresh_playlists(&mut self) {
+        match self.cache.playlists() {
+            Ok(playlists) => self.emit(LibraryEvent::Playlists(playlists)),
+            Err(error) => self.fail(error),
         }
     }
 
@@ -422,6 +459,7 @@ mod tests {
         events: Receiver<LibraryEvent>,
         tracks: HashMap<i64, Track>,
         folders: Vec<Folder>,
+        playlists: Vec<super::super::Playlist>,
         /// How many times it told of changed tracks.
         changes: usize,
     }
@@ -445,6 +483,7 @@ mod tests {
                 events,
                 tracks: HashMap::new(),
                 folders: Vec::new(),
+                playlists: Vec::new(),
                 changes: 0,
             }
         }
@@ -482,8 +521,31 @@ mod tests {
                         }
                     }
                     LibraryEvent::Folders(folders) => self.folders = folders,
+                    LibraryEvent::Playlists(playlists) => self.playlists = playlists,
                     LibraryEvent::Complete => {}
                     LibraryEvent::Failed(error) => panic!("{what}: {error}"),
+                }
+            }
+        }
+
+        /// Takes events until the playlists it told last are `expected`:
+        /// a change to them is told without the library going unsettled.
+        fn until_playlists(&mut self, what: &str, expected: &[(&str, Vec<i64>)]) {
+            let deadline = Instant::now() + PATIENCE;
+            let told = |library: &Self| {
+                library
+                    .playlists
+                    .iter()
+                    .map(|playlist| (playlist.name.as_str(), playlist.tracks.clone()))
+                    .eq(expected.iter().cloned())
+            };
+            while !told(self) {
+                let left = deadline.saturating_duration_since(Instant::now());
+                match self.events.recv_timeout(left) {
+                    Ok(LibraryEvent::Playlists(playlists)) => self.playlists = playlists,
+                    Ok(LibraryEvent::Failed(error)) => panic!("{what}: {error}"),
+                    Ok(_) => {}
+                    Err(_) => panic!("{what}: not in time"),
                 }
             }
         }
@@ -525,6 +587,42 @@ mod tests {
             }
         }
         (home, music)
+    }
+
+    #[test]
+    fn playlists_are_told_at_once_and_after_every_change_to_them() {
+        let (home, music) = music();
+        let mut library = Following::start(home.path(), &music);
+        library.until("the first scan", |library| library.present().len() == 4);
+        let ids: Vec<i64> = library.present().iter().map(|track| track.id).collect();
+
+        library.send(LibraryCommand::CreatePlaylist {
+            name: "Mix".into(),
+            tracks: vec![ids[2]],
+        });
+        library.until_playlists("made", &[("Mix", vec![ids[2]])]);
+        let id = library.playlists[0].id;
+        library.send(LibraryCommand::AddToPlaylist {
+            playlist: id,
+            tracks: vec![ids[0], ids[2]],
+        });
+        library.until_playlists("added to", &[("Mix", vec![ids[2], ids[0]])]);
+        library.send(LibraryCommand::RemoveFromPlaylist {
+            playlist: id,
+            track: ids[2],
+        });
+        library.send(LibraryCommand::RenamePlaylist {
+            playlist: id,
+            name: "Kept".into(),
+        });
+        library.until_playlists("renamed", &[("Kept", vec![ids[0]])]);
+
+        // Told at once on the next run.
+        library.stop();
+        let mut library = Following::start(home.path(), &music);
+        library.until_playlists("the next run", &[("Kept", vec![ids[0]])]);
+        library.send(LibraryCommand::DeletePlaylist(id));
+        library.until_playlists("deleted", &[]);
     }
 
     #[test]

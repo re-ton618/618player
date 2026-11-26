@@ -2,7 +2,7 @@ use nsh_base::theme;
 use nsh_core::prelude::*;
 
 use super::track_list::track_list;
-use super::{now_playing, settings, song_information, tab_strip};
+use super::{now_playing, playlists, settings, song_information, tab_strip};
 use crate::app::listing::Listing;
 use crate::app::store::store;
 use crate::app::tabs::Kind;
@@ -27,6 +27,7 @@ pub(super) fn workspace() -> impl IntoElement {
         Some(Kind::RecentlyAdded) => track_list(Listing::RecentlyAdded).into_element(),
         Some(Kind::NowPlaying) => now_playing::now_playing().into_element(),
         Some(Kind::SongInformation) => song_information::song_information().into_element(),
+        Some(Kind::Playlists) => playlists::playlists().into_element(),
         Some(Kind::Settings) => settings::settings().into_element(),
         None => message("No tabs open. Use + to open one.").into_element(),
     });

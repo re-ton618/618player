@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
-use super::Track;
 use super::catalog::compare_in_album;
+use super::Track;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SortColumn {
@@ -48,10 +48,7 @@ pub(crate) fn matching_track_indices(
     let mut indices: Vec<_> = tracks
         .iter()
         .enumerate()
-        .filter_map(|(index, track)| {
-            (track.present && (query.is_empty() || track.search_key().contains(&query)))
-                .then_some(index)
-        })
+        .filter_map(|(index, track)| matches(track, &query).then_some(index))
         .collect();
 
     indices.sort_unstable_by(|&left_index, &right_index| {
@@ -61,6 +58,25 @@ pub(crate) fn matching_track_indices(
             .then_with(|| left.id.cmp(&right.id))
     });
     indices
+}
+
+/// Which of `positions` in `tracks` are of present tracks that match
+/// `query`, in the order they are given (a playlist's).
+pub(crate) fn matching_in_order(
+    tracks: &[Track],
+    positions: impl IntoIterator<Item = usize>,
+    query: &str,
+) -> Vec<usize> {
+    let query = query.trim().to_lowercase();
+    positions
+        .into_iter()
+        .filter(|&position| matches(&tracks[position], &query))
+        .collect()
+}
+
+/// The track is there and matches `query`, lowercased and trimmed.
+fn matches(track: &Track, query: &str) -> bool {
+    track.present && (query.is_empty() || track.search_key().contains(query))
 }
 
 fn compare_tracks(
@@ -115,8 +131,8 @@ fn compare_optional_text(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library::track::Metadata;
     use crate::library::track::tests::track_at;
+    use crate::library::track::Metadata;
 
     fn track(id: i64, title: &str, artist: Option<&str>, year: Option<u32>) -> Track {
         track_at(
@@ -241,5 +257,18 @@ mod tests {
         assert_eq!(sorted(SortDirection::Ascending), [7, 6, 5, 4, 2, 3, 1, 8]);
         // Descending turns the albums around, not the tracks within one.
         assert_eq!(sorted(SortDirection::Descending), [3, 1, 4, 2, 7, 6, 5, 8]);
+    }
+
+    #[test]
+    fn a_playlist_keeps_its_order_through_a_search_and_skips_absent_tracks() {
+        let mut tracks = [
+            track(1, "Alpha", Some("Band"), None),
+            track(2, "Beta", Some("Other"), None),
+            track(3, "Gamma", Some("Band"), None),
+        ];
+        tracks[1].present = false;
+        assert_eq!(matching_in_order(&tracks, [2, 1, 0], ""), [2, 0]);
+        assert_eq!(matching_in_order(&tracks, [2, 1, 0], " BAND "), [2, 0]);
+        assert_eq!(matching_in_order(&tracks, [0, 2], "gamma"), [2]);
     }
 }
