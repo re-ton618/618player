@@ -1,6 +1,8 @@
 mod input;
+mod layout;
 mod listening;
 mod listing;
+mod mobile;
 mod playback;
 mod playlists;
 mod queue;
@@ -21,9 +23,19 @@ use crate::library::{
     Catalog, Folder, LibraryCommand, LibraryEvent, SortColumn, SortDirection, Track,
 };
 
+pub(crate) use layout::Layout;
 use listing::Listing;
 pub(crate) use store::Store;
-pub(crate) use view::root;
+
+/// The window's content, in the layout the app runs in: the desktop's
+/// views and the phone's share the store, and nothing else.
+pub(crate) fn root() -> impl nsh_core::prelude::IntoElement {
+    use nsh_core::prelude::IntoElement as _;
+    match Layout::current() {
+        Layout::Desktop => view::root().into_element(),
+        Layout::Mobile => mobile::root().into_element(),
+    }
+}
 
 /// Tracks in a row the player may fail on before the queue gives up.
 const MAX_PLAYBACK_FAILURES: u8 = 5;

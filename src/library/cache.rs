@@ -44,12 +44,12 @@ impl Cache {
     /// The user's library, with the system's Music folder in it on the
     /// first run.
     pub(super) fn open() -> CacheResult<Self> {
-        let directory = dirs::data_local_dir()
+        let directory = crate::platform::data_local_dir()
             .unwrap_or_else(std::env::temp_dir)
             .join("618player");
         fs::create_dir_all(&directory)?;
         let mut cache = Self::open_at(&directory.join("library.sqlite3"))?;
-        cache.seed(dirs::audio_dir())?;
+        cache.seed(crate::platform::audio_dir())?;
         Ok(cache)
     }
 

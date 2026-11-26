@@ -2,7 +2,7 @@ use nsh_core::desktop::{WindowAttributes, WindowFrameStyle};
 use nsh_core::prelude::*;
 
 pub const TITLE: &str = "618 Player";
-pub const APP_ID: &str = "com.618player.app";
+pub const APP_ID: &str = "com.player618.app";
 pub const DEFAULT_SIZE: (i32, i32) = (960, 640);
 const MIN_SIZE: (f32, f32) = (840.0, 520.0);
 

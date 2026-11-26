@@ -219,6 +219,7 @@ impl<E: FnMut(LibraryEvent) -> bool> Service<E> {
                     self.fail(error);
                 }
             }
+            LibraryCommand::Rescan => self.rescan(Dirty::Everything),
         }
     }
 

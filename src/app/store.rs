@@ -51,7 +51,34 @@ impl Store {
             }
         });
         super::input::bind(move |message| store.dispatch(Message::Tabs(message)));
+        store.request_audio_access();
         store
+    }
+
+    /// Asks for the device's music where the system wants that asked
+    /// ([`crate::platform::request_audio_access`]), once the app is in
+    /// front, and scans again when the user allows it.
+    fn request_audio_access(&self) {
+        use crate::platform::{request_audio_access, AudioAccess};
+        use nsh_core::platform::Lifecycle;
+
+        let store = *self;
+        let asking = signal(false);
+        effect(move || {
+            if lifecycle() != Lifecycle::Active || asking.get_untracked() {
+                return;
+            }
+            asking.set(true);
+            spawn(async move {
+                match request_audio_access().await {
+                    AudioAccess::Granted => store
+                        .library
+                        .with(|library| library.send(library::LibraryCommand::Rescan)),
+                    AudioAccess::Unasked => asking.set(false),
+                    AudioAccess::Held | AudioAccess::Refused => {}
+                }
+            });
+        });
     }
 
     /// The handle of `listing`'s list, which an update may scroll.

@@ -76,6 +76,8 @@ pub(crate) enum LibraryCommand {
     },
     /// The track of this id was listened to once more.
     RecordPlay(i64),
+    /// Scans every folder again: the app may read what it could not.
+    Rescan,
 }
 
 #[derive(Debug, Clone)]

@@ -37,7 +37,7 @@ pub(super) fn load() -> StoreResult<Option<Session>> {
 }
 
 fn session_path() -> PathBuf {
-    dirs::config_dir()
+    crate::platform::config_dir()
         .unwrap_or_else(std::env::temp_dir)
         .join("618player/session-v1.txt")
 }

@@ -16,7 +16,7 @@ pub(super) fn save(state: &State) -> StoreResult<()> {
 }
 
 fn workspace_path() -> PathBuf {
-    dirs::config_dir()
+    crate::platform::config_dir()
         .unwrap_or_else(std::env::temp_dir)
         .join("618player/workspace-v1.txt")
 }

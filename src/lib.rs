@@ -3,6 +3,7 @@
 mod app;
 mod audio;
 mod library;
+mod platform;
 mod settings;
 mod theme;
 mod ui;
@@ -23,6 +24,7 @@ fn native(registry: &mut Registry) {
 /// the main window that shows it.
 #[component]
 pub fn App() -> impl IntoElement {
+    platform::init();
     let store = app::Store::new();
     provide_context(store);
     app_window()
