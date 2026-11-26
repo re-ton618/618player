@@ -12,7 +12,7 @@ use crate::ui::strip;
 pub(super) const TAB_STRIP_HEIGHT: f32 = 32.0;
 
 /// The tab strip over the active tab's body, in a bordered region.
-pub(super) fn workspace() -> impl IntoElement {
+pub(in crate::app) fn workspace() -> impl IntoElement {
     let store = store();
     let active = store.select(|model| model.tabs.active());
 

@@ -13,6 +13,10 @@ mod volume_control;
 mod window_frame;
 mod workspace;
 
+pub(super) use playback::progress;
+pub(super) use playlist_prompt::playlist_prompt;
+pub(super) use workspace::workspace;
+
 use nsh_base::theme;
 use nsh_core::prelude::*;
 

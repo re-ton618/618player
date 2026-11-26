@@ -127,13 +127,14 @@ pub(super) fn playback_bar() -> impl IntoElement {
         .border_1()
         .border_color(border)
         .child(left)
-        .child(progress(store))
+        .child(progress(store, PROGRESS_HIT_HEIGHT, TIME_TEXT_SIZE))
         .child(right)
 }
 
 /// The current track's position, a line the user drags to move it, and
-/// its length.
-fn progress(store: Store) -> impl IntoElement {
+/// its length. The line takes presses `hit_height` around it; the times
+/// are `text_size`.
+pub(in crate::app) fn progress(store: Store, hit_height: f32, text_size: f32) -> impl IntoElement {
     let position = store.select(|model| model.playback.position_ms());
     let duration = store.select(|model| model.playback.duration_ms());
     let loaded = store.select(|model| {
@@ -164,7 +165,7 @@ fn progress(store: Store) -> impl IntoElement {
         .accessibility_label("Position")
         .flex_1()
         .min_w(px(0.0))
-        .track_style(|s| s.h(px(PROGRESS_HIT_HEIGHT)).justify_center())
+        .track_style(move |s| s.h(px(hit_height)).justify_center())
         .indicator_style(|s| s.h(px(PROGRESS_TRACK_HEIGHT)).bg(move || theme().border))
         .range_style(|s| s.bg(move || theme().primary))
         .thumb_class("bg-primary hover:bg-foreground active:bg-foreground disabled:opacity-0")
@@ -179,7 +180,7 @@ fn progress(store: Store) -> impl IntoElement {
         .gap(px(PROGRESS_GAP))
         .px(px(PROGRESS_PADDING))
         .child(
-            caption(move || SharedString::from(clock(shown())), TIME_TEXT_SIZE)
+            caption(move || SharedString::from(clock(shown())), text_size)
                 .text_color(muted)
                 .tabular_nums(),
         )
@@ -191,7 +192,7 @@ fn progress(store: Store) -> impl IntoElement {
                         .get()
                         .map_or_else(|| SharedString::from("--:--"), |end| clock(end).into())
                 },
-                TIME_TEXT_SIZE,
+                text_size,
             )
             .text_color(muted)
             .tabular_nums(),

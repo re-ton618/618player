@@ -5,9 +5,9 @@
 use nsh_base::{button, dialog, input, theme};
 use nsh_core::prelude::*;
 
-use crate::app::Message;
 use crate::app::playlists::Prompt;
-use crate::app::store::{Store, store};
+use crate::app::store::{store, Store};
+use crate::app::Message;
 use crate::theme::{self as tokens, CHROME_BORDER_WIDTH};
 use crate::ui::{caption, chrome_text_button};
 
@@ -26,7 +26,7 @@ const NAME_MAX_LENGTH: u32 = 120;
 const BACKDROP_OPACITY: f32 = 0.6;
 
 /// The prompt, while the model has one.
-pub(super) fn playlist_prompt() -> impl IntoElement {
+pub(in crate::app) fn playlist_prompt() -> impl IntoElement {
     let store = store();
     let open = store.select(|model| model.playlists.prompt.is_some());
     when(open, move || prompt(store))
