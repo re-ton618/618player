@@ -8,6 +8,7 @@
 mod icons;
 mod menus;
 mod rows;
+mod scrollbar;
 
 use nsh_base::{theme, ButtonElement};
 use nsh_core::prelude::*;
@@ -15,6 +16,7 @@ use nsh_core::prelude::*;
 pub(crate) use icons::Icon;
 pub(crate) use menus::{bar_menu, menu_divider, menu_row, menu_submenu, subject_menu};
 pub(crate) use rows::{button, choice, label_column_row, section_title, ROW_HEIGHT};
+pub(crate) use scrollbar::{scrolling_only_scrollbar, use_app_scrollbars};
 
 use crate::theme as tokens;
 

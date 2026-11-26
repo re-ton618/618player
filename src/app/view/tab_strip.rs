@@ -5,7 +5,7 @@ use super::{add_tab_menu, workspace::TAB_STRIP_HEIGHT};
 use crate::app::store::{store, Store};
 use crate::app::tabs::{Kind, Message as TabMessage, Side};
 use crate::app::Message;
-use crate::ui::{chrome_button, Icon, Tone};
+use crate::ui::{chrome_button, scrolling_only_scrollbar, Icon, Tone};
 
 /// A tab, its right edge included: tabs are a fixed width so a drag can
 /// find the tab under the pointer.
@@ -56,15 +56,32 @@ pub(super) fn tab_strip() -> impl IntoElement {
             move |kind, _| tab(store, kind.get_untracked()),
         ));
 
+    // More tabs than fit scroll sideways (a vertical wheel moves it too),
+    // the menu following the last; the strip clips them to the region.
+    let tabs_and_menu = scroll()
+        .horizontal()
+        .scrollbar(scrolling_only_scrollbar())
+        .flex_1()
+        .min_w(px(0.0))
+        .h_full()
+        .child(
+            view()
+                .flex_row()
+                .h_full()
+                .child(open_tabs)
+                .child(add_tab_menu::add_tab_menu()),
+        );
+
     view()
         .h(px(TAB_STRIP_HEIGHT + 1.0))
         .flex_shrink_0()
         .flex_row()
+        .min_w(px(0.0))
+        .overflow_hidden()
         .bg(move || theme().card)
         .border_b_1()
         .border_color(move || theme().border)
-        .child(open_tabs)
-        .child(add_tab_menu::add_tab_menu())
+        .child(tabs_and_menu)
 }
 
 /// A tab owns its right edge. The active one takes the body's

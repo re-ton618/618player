@@ -29,8 +29,10 @@ const WINDOW_PADDING: f32 = 8.0;
 const REGION_GAP: f32 = 8.0;
 
 /// The main window's content: the top bar, the workspace and the playback
-/// bar, over the edges that resize the frameless window.
+/// bar, over the edges that resize the frameless window. Every scroll
+/// view in it draws the app's bar.
 pub(crate) fn root() -> impl IntoElement {
+    crate::ui::use_app_scrollbars();
     view()
         .flex_1()
         .bg(move || theme().background)
