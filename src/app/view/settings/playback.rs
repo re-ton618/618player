@@ -1,4 +1,5 @@
-//! Playback: what the queue does (shuffle, repeat) and the volume.
+//! Playback: what the queue does (shuffle, repeat), the volume, and when
+//! a track counts as listened to.
 
 use nsh_base::theme;
 use nsh_core::prelude::*;
@@ -16,8 +17,13 @@ const STEPPER_WIDTH: f32 = ui::ROW_HEIGHT + CHROME_BORDER_WIDTH;
 /// How far a press of − or + moves the volume, in percent.
 const VOLUME_STEP: u8 = 5;
 const MAX_VOLUME: u8 = 100;
+/// How far a press of − or + moves the listening threshold, in percent.
+const LISTEN_STEP: u8 = 5;
+const MIN_LISTEN_PERCENT: u8 = 5;
+const MAX_LISTEN_PERCENT: u8 = 100;
 
-/// Playback: what the queue does (shuffle, repeat) and the volume.
+/// Playback: what the queue does (shuffle, repeat), the volume, and when
+/// a track counts as listened to.
 pub(super) fn page(store: Store) -> View {
     let border = move || theme().border;
     let shuffled = store.select(|model| model.queue.shuffled());
@@ -25,6 +31,10 @@ pub(super) fn page(store: Store) -> View {
     let volume = store.select(|model| model.playback.volume());
     let shown_volume =
         store.select(|model| SharedString::from(format!("{}%", model.playback.volume())));
+    let listen_percent = store.select(|model| model.playback.listen_percent());
+    let shown_listen_percent = store.select(|model| {
+        SharedString::from(format!("{}% of the track", model.playback.listen_percent()))
+    });
 
     let shuffle = move |label, on: bool| {
         ui::choice(
@@ -53,6 +63,28 @@ pub(super) fn page(store: Store) -> View {
         .border_l_1()
         .border_color(border)
     };
+    let listen_step = move |label, change: fn(u8) -> u8| {
+        ui::button(label, move || {
+            store.dispatch(Message::ListenPercentChosen(change(
+                listen_percent.get_untracked(),
+            )))
+        })
+        .w(px(STEPPER_WIDTH))
+        .justify_center()
+        .border_l_1()
+        .border_color(border)
+    };
+    let value = move |shown: Memo<SharedString>| {
+        view()
+            .flex_1()
+            .min_w(px(0.0))
+            .h_full()
+            .px(px(CELL_PADDING))
+            .justify_center()
+            .border_l_1()
+            .border_color(border)
+            .child(text(shown).text_size(px(VOLUME_TEXT_SIZE)).tabular_nums())
+    };
 
     view()
         .w_full()
@@ -71,26 +103,23 @@ pub(super) fn page(store: Store) -> View {
         .child(section_title("Output"))
         .child(
             label_column_row("Volume")
-                .child(
-                    view()
-                        .flex_1()
-                        .min_w(px(0.0))
-                        .h_full()
-                        .px(px(CELL_PADDING))
-                        .justify_center()
-                        .border_l_1()
-                        .border_color(border)
-                        .child(
-                            text(shown_volume)
-                                .text_size(px(VOLUME_TEXT_SIZE))
-                                .tabular_nums(),
-                        ),
-                )
+                .child(value(shown_volume))
                 .child(step("\u{2212}", |volume| {
                     volume.saturating_sub(VOLUME_STEP)
                 }))
                 .child(step("+", |volume| {
                     volume.saturating_add(VOLUME_STEP).min(MAX_VOLUME)
+                })),
+        )
+        .child(section_title("Play count"))
+        .child(
+            label_column_row("Counts as played")
+                .child(value(shown_listen_percent))
+                .child(listen_step("\u{2212}", |percent| {
+                    percent.saturating_sub(LISTEN_STEP).max(MIN_LISTEN_PERCENT)
+                }))
+                .child(listen_step("+", |percent| {
+                    percent.saturating_add(LISTEN_STEP).min(MAX_LISTEN_PERCENT)
                 })),
         )
 }

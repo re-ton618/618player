@@ -117,6 +117,9 @@ pub(crate) struct Track {
     pub(crate) replay_gain: ReplayGain,
     pub(crate) metadata_state: MetadataState,
     pub(crate) metadata_error: Option<String>,
+    /// How many times the track was listened to: played for at least the
+    /// share of it the user set.
+    pub(crate) play_count: u32,
     search_key: String,
     title_key: String,
     artist_key: String,
@@ -171,6 +174,7 @@ impl Track {
             replay_gain: ReplayGain::default(),
             metadata_state,
             metadata_error,
+            play_count: 0,
             search_key: String::new(),
             title_key: String::new(),
             artist_key: String::new(),

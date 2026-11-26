@@ -259,6 +259,18 @@ impl Cache {
         }
     }
 
+    /// Counts one more listen of track `id`.
+    pub(super) fn record_play(&mut self, id: i64) -> CacheResult<()> {
+        self.connection.execute(
+            "UPDATE tracks SET play_count = play_count + 1 WHERE id = ?1",
+            [id],
+        )?;
+        if let Some(track) = self.tracks.get_mut(&id) {
+            track.play_count = track.play_count.saturating_add(1);
+        }
+        Ok(())
+    }
+
     /// Every track the database has, absent ones too.
     pub(super) fn tracks(&self) -> Vec<Track> {
         let mut tracks: Vec<_> = self.tracks.values().cloned().collect();
@@ -600,11 +612,11 @@ impl Cache {
                     duration_ms, track_number, track_total, disc_number, disc_total,
                     compilation, release_id, sample_rate, bit_depth, channels, codec,
                     bitrate_kbps, track_gain_db, track_peak, album_gain_db, album_peak,
-                    metadata_state, metadata_error
+                    metadata_state, metadata_error, play_count
              FROM tracks",
         )?;
         let rows = statement.query_map([], |row| {
-            Ok(Track::new(
+            let mut track = Track::new(
                 FileRecord {
                     id: row.get(0)?,
                     folder_id: row.get(1)?,
@@ -644,7 +656,9 @@ impl Cache {
                 },
                 MetadataState::from_i64(row.get(31)?),
                 row.get(32)?,
-            ))
+            );
+            track.play_count = row.get(33)?;
+            Ok(track)
         })?;
 
         let (mut tracks, mut by_path) = (HashMap::new(), HashMap::new());
@@ -959,6 +973,26 @@ mod tests {
         assert_eq!(track.bitrate_kbps, Some(2_900));
         assert_eq!(track.replay_gain, metadata.replay_gain);
         assert_eq!(track.duration_ms, Some(123_456));
+        Ok(())
+    }
+
+    #[test]
+    fn plays_are_counted_and_survive_a_reopen_and_a_rescan() -> CacheResult<()> {
+        let (directory, mut cache, folder) = library()?;
+        let root = directory.path();
+        let files = || vec![file(root, "a.flac", 10, None)];
+        let id = scan(&mut cache, folder, root, files()).changed[0].id;
+        assert_eq!(cache.tracks()[0].play_count, 0);
+
+        cache.record_play(id)?;
+        cache.record_play(id)?;
+        assert_eq!(cache.tracks()[0].play_count, 2);
+
+        drop(cache);
+        let mut cache = Cache::open_at(&root.join("library.sqlite3"))?;
+        assert_eq!(cache.tracks()[0].play_count, 2);
+        scan(&mut cache, folder, root, files());
+        assert_eq!(cache.tracks()[0].play_count, 2);
         Ok(())
     }
 

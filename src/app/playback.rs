@@ -110,6 +110,32 @@ impl Artwork {
     }
 }
 
+/// The share of a track, in percent, heard by default before it counts as
+/// listened to.
+pub(super) const DEFAULT_LISTEN_PERCENT: u8 = 10;
+/// The most a report of the position may move on from the one before and
+/// still be heard as playback: anything further is a jump.
+const MAX_HEARD_STEP_MS: u64 = 5_000;
+
+/// What is heard of the loaded track since it started, to tell when it is
+/// listened to.
+#[derive(Debug, Clone, Default)]
+struct Listen {
+    track_id: Option<i64>,
+    heard_ms: u64,
+    /// It was counted as listened to already.
+    counted: bool,
+}
+
+impl Listen {
+    fn of(track_id: i64) -> Self {
+        Self {
+            track_id: Some(track_id),
+            ..Self::default()
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct State {
     current: Option<CurrentTrack>,
@@ -128,11 +154,18 @@ pub(super) struct State {
     replaced: Vec<u64>,
     position_ms: u64,
     duration_ms: Option<u64>,
+    listen: Listen,
+    /// The share of a track, in percent, to hear before it counts as
+    /// listened to.
+    listen_percent: u8,
+    /// The tracks listened to since the caller last took them.
+    plays: Vec<i64>,
 }
 
 #[derive(Debug, Clone)]
 struct Queued {
     ticket: u64,
+    track_id: i64,
     /// The key of the queue's entry it was queued as.
     entry: u64,
     path: PathBuf,
@@ -153,6 +186,9 @@ impl Default for State {
             replaced: Vec::new(),
             position_ms: 0,
             duration_ms: None,
+            listen: Listen::default(),
+            listen_percent: DEFAULT_LISTEN_PERCENT,
+            plays: Vec::new(),
         }
     }
 }
@@ -253,6 +289,7 @@ impl State {
         // The player drops what was queued behind the track before.
         self.queued = None;
         self.replaced.clear();
+        self.listen = Listen::of(track.id);
         self.ticket = self.next_ticket();
         Command::Load {
             ticket: self.ticket,
@@ -270,6 +307,7 @@ impl State {
             .map_or(position_ms, |end| position_ms.min(end));
         self.queued = None;
         self.replaced.clear();
+        self.listen = Listen::of(track.id);
         self.ticket = self.next_ticket();
         Command::Cue {
             ticket: self.ticket,
@@ -289,6 +327,7 @@ impl State {
         let ticket = self.next_ticket();
         self.queued = Some(Queued {
             ticket,
+            track_id: track.id,
             entry,
             path: track.path.clone(),
             duration_ms: track.duration_ms,
@@ -360,6 +399,7 @@ impl State {
         self.position_ms = 0;
         self.queued = None;
         self.replaced.clear();
+        self.listen = Listen::default();
         // What the player still reports of the dropped track is stale.
         self.ticket = self.next_ticket();
         Command::Stop
@@ -370,6 +410,9 @@ impl State {
         if let Event::Started { ticket, duration } = &event
             && let Some(queued) = self.queued.take_if(|queued| queued.ticket == *ticket)
         {
+            // The track before played to its end.
+            self.hear_rest();
+            self.listen = Listen::of(queued.track_id);
             self.ticket = queued.ticket;
             self.replaced.clear();
             self.position_ms = 0;
@@ -381,6 +424,7 @@ impl State {
         {
             // Whatever is queued now is behind the file the player went
             // on to, not behind the current track.
+            self.hear_rest();
             self.replaced.clear();
             return Report::Strayed;
         }
@@ -392,16 +436,67 @@ impl State {
                 Report::Handled
             }
             Event::Position { ticket, position } if ticket == self.ticket => {
-                self.position_ms = millis(position);
+                let position_ms = millis(position);
+                if position_ms > self.position_ms
+                    && position_ms - self.position_ms <= MAX_HEARD_STEP_MS
+                {
+                    self.hear(position_ms - self.position_ms);
+                }
+                self.position_ms = position_ms;
                 Report::Handled
             }
-            Event::Finished { ticket } if ticket == self.ticket => Report::Finished,
+            Event::Finished { ticket } if ticket == self.ticket => {
+                self.hear_rest();
+                Report::Finished
+            }
             Event::Failed { ticket, error } if ticket == self.ticket => Report::Failed(error),
             Event::Started { .. }
             | Event::Position { .. }
             | Event::Finished { .. }
             | Event::Failed { .. } => Report::Handled,
         }
+    }
+
+    /// The loaded track was heard for `heard_ms` more: once that makes the
+    /// share of it the user set, it is listened to.
+    fn hear(&mut self, heard_ms: u64) {
+        let listen = &mut self.listen;
+        listen.heard_ms = listen.heard_ms.saturating_add(heard_ms);
+        let (Some(track_id), Some(duration_ms)) = (listen.track_id, self.duration_ms) else {
+            return;
+        };
+        let due = duration_ms.saturating_mul(u64::from(self.listen_percent)) / 100;
+        if !listen.counted && duration_ms > 0 && listen.heard_ms >= due {
+            listen.counted = true;
+            self.plays.push(track_id);
+        }
+    }
+
+    /// The loaded track ended: what was left of it after the last report
+    /// of the position was heard too.
+    fn hear_rest(&mut self) {
+        let rest = self
+            .duration_ms
+            .map_or(0, |end| end.saturating_sub(self.position_ms));
+        if rest <= MAX_HEARD_STEP_MS {
+            self.hear(rest);
+        }
+    }
+
+    /// The tracks listened to since this was asked last, in the order
+    /// they were.
+    pub(super) fn take_plays(&mut self) -> Vec<i64> {
+        std::mem::take(&mut self.plays)
+    }
+
+    /// The share of a track, in percent, to hear before it counts as
+    /// listened to.
+    pub(super) fn listen_percent(&self) -> u8 {
+        self.listen_percent
+    }
+
+    pub(super) fn set_listen_percent(&mut self, percent: u8) {
+        self.listen_percent = percent.clamp(1, 100);
     }
 
     fn next_ticket(&mut self) -> u64 {
@@ -690,6 +785,139 @@ mod tests {
             playback.report(Event::Finished { ticket: second }),
             Report::Finished
         );
+    }
+
+    /// Reports the position of `ticket` at every second from `from` to `to`.
+    fn heard(playback: &mut State, ticket: u64, from: u64, to: u64) {
+        for second in from..=to {
+            let position = Event::Position {
+                ticket,
+                position: Duration::from_secs(second),
+            };
+            assert_eq!(playback.report(position), Report::Handled);
+        }
+    }
+
+    #[test]
+    fn a_track_counts_as_listened_to_once_when_its_share_is_heard() {
+        let track = album_track(1, "one", "album");
+        let mut playback = State::default();
+        let _ = playback.select(&track);
+        let Command::Load { ticket, .. } = playback.play(&track) else {
+            panic!("playing loads the track");
+        };
+        let started = Event::Started {
+            ticket,
+            duration: Some(Duration::from_secs(100)),
+        };
+        assert_eq!(playback.report(started), Report::Handled);
+
+        heard(&mut playback, ticket, 1, 9);
+        assert_eq!(playback.take_plays(), Vec::<i64>::new());
+        heard(&mut playback, ticket, 10, 10);
+        assert_eq!(playback.take_plays(), [1]);
+        heard(&mut playback, ticket, 11, 40);
+        assert_eq!(playback.take_plays(), Vec::<i64>::new());
+
+        // Played again, it counts again.
+        let Command::Load { ticket, .. } = playback.play(&track) else {
+            panic!("playing loads the track");
+        };
+        let started = Event::Started {
+            ticket,
+            duration: Some(Duration::from_secs(100)),
+        };
+        assert_eq!(playback.report(started), Report::Handled);
+        heard(&mut playback, ticket, 1, 10);
+        assert_eq!(playback.take_plays(), [1]);
+    }
+
+    #[test]
+    fn what_is_skipped_by_a_seek_or_a_jump_is_not_heard() {
+        let track = album_track(1, "one", "album");
+        let mut playback = State::default();
+        playback.set_listen_percent(50);
+        let _ = playback.select(&track);
+        let Command::Load { ticket, .. } = playback.play(&track) else {
+            panic!("playing loads the track");
+        };
+        let started = Event::Started {
+            ticket,
+            duration: Some(Duration::from_secs(100)),
+        };
+        assert_eq!(playback.report(started), Report::Handled);
+        heard(&mut playback, ticket, 1, 10);
+
+        let Some(Command::Seek { ticket, .. }) = playback.seek(80_000) else {
+            panic!("a loaded track seeks");
+        };
+        heard(&mut playback, ticket, 81, 99);
+        // A report far from the one before is a jump, not playback.
+        heard(&mut playback, ticket, 70, 70);
+        heard(&mut playback, ticket, 90, 90);
+        assert_eq!(
+            playback.report(Event::Finished { ticket }),
+            Report::Finished
+        );
+        assert_eq!(playback.take_plays(), Vec::<i64>::new());
+
+        // Nothing is counted of a track that is stopped, nor of one whose
+        // length is not known.
+        let Command::Load { ticket, .. } = playback.play(&track) else {
+            panic!("playing loads the track");
+        };
+        playback.duration_ms = None;
+        heard(&mut playback, ticket, 1, 60);
+        let _ = playback.stop();
+        heard(&mut playback, ticket, 61, 70);
+        assert_eq!(playback.take_plays(), Vec::<i64>::new());
+    }
+
+    #[test]
+    fn a_track_heard_to_its_end_counts_before_the_next_one_goes_on() {
+        let (one, two) = (
+            album_track(1, "one", "album"),
+            album_track(2, "two", "album"),
+        );
+        let mut playback = State::default();
+        playback.set_listen_percent(100);
+        let _ = playback.select(&one);
+        let Command::Load { ticket: first, .. } = playback.play(&one) else {
+            panic!("playing loads the track");
+        };
+        let started = Event::Started {
+            ticket: first,
+            duration: Some(Duration::from_millis(5_500)),
+        };
+        assert_eq!(playback.report(started), Report::Handled);
+        let Some(Command::Queue { ticket: second, .. }) = playback.queue(&two, 9) else {
+            panic!("a playing track takes one behind it");
+        };
+        heard(&mut playback, first, 1, 5);
+        assert_eq!(playback.take_plays(), Vec::<i64>::new());
+
+        let started = Event::Started {
+            ticket: second,
+            duration: Some(Duration::from_secs(4)),
+        };
+        assert_eq!(playback.report(started), Report::Advanced(9));
+        assert_eq!(playback.take_plays(), [1]);
+        heard(&mut playback, second, 1, 3);
+        assert_eq!(
+            playback.report(Event::Finished { ticket: second }),
+            Report::Finished
+        );
+        assert_eq!(playback.take_plays(), [2]);
+    }
+
+    #[test]
+    fn the_listening_threshold_is_a_percent() {
+        let mut playback = State::default();
+        assert_eq!(playback.listen_percent(), DEFAULT_LISTEN_PERCENT);
+        playback.set_listen_percent(0);
+        assert_eq!(playback.listen_percent(), 1);
+        playback.set_listen_percent(250);
+        assert_eq!(playback.listen_percent(), 100);
     }
 
     #[test]

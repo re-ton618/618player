@@ -13,6 +13,8 @@ pub(crate) enum SortColumn {
     /// When the file was last changed: when it came into the library, for
     /// as long as it was not written to since.
     Added,
+    /// How many times the track was listened to.
+    Plays,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,6 +106,10 @@ fn compare_tracks(
         SortColumn::Year => compare_optional(left.year, right.year, direction),
         SortColumn::Duration => compare_optional(left.duration_ms, right.duration_ms, direction),
         SortColumn::Added => direction.apply(left.modified_ns.cmp(&right.modified_ns)),
+        // As often heard, by title.
+        SortColumn::Plays => direction
+            .apply(left.play_count.cmp(&right.play_count))
+            .then_with(|| left.title_key().cmp(right.title_key())),
     }
 }
 

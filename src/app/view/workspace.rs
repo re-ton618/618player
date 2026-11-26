@@ -25,6 +25,7 @@ pub(super) fn workspace() -> impl IntoElement {
     let other = dynamic(move || match active.get() {
         Some(Kind::Library) => view().into_element(),
         Some(Kind::RecentlyAdded) => track_list(Listing::RecentlyAdded).into_element(),
+        Some(Kind::MostPlayed) => track_list(Listing::MostPlayed).into_element(),
         Some(Kind::NowPlaying) => now_playing::now_playing().into_element(),
         Some(Kind::SongInformation) => song_information::song_information().into_element(),
         Some(Kind::Playlists) => playlists::playlists().into_element(),

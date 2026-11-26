@@ -1,4 +1,5 @@
 mod input;
+mod listening;
 mod listing;
 mod playback;
 mod playlists;
@@ -156,6 +157,9 @@ enum Message {
     SettingsCategoryPressed(settings_tab::Category),
     /// A theme was chosen (the Settings tab).
     ThemeChosen(crate::theme::Id),
+    /// The share of a track, in percent, to hear before it counts as
+    /// listened to (the Settings tab).
+    ListenPercentChosen(u8),
     /// The Playlists tab is to show the playlist of this id.
     PlaylistChosen(i64),
     /// The naming prompt is to ask for a new playlist's name; the
@@ -200,6 +204,8 @@ enum Effect {
     FlushSession(session::Session),
     /// Draws the app in this theme, and keeps it for the next launch.
     ApplyTheme(crate::theme::Id),
+    /// Keeps the listening threshold, in percent, for the next launch.
+    SaveListenPercent(u8),
 }
 
 /// Takes `message`, and with it keeps two promises whatever it was: the
@@ -209,6 +215,7 @@ enum Effect {
 fn update(model: &mut Model, message: Message) -> Vec<Effect> {
     let closing = matches!(message, Message::Closing);
     let mut effects = model.handle(message);
+    effects.extend(model.record_plays());
     effects.extend(model.sync_queued());
     effects.extend(model.sync_playlist_artwork());
     effects.extend(model.save_session(closing));
@@ -442,6 +449,13 @@ impl Model {
                     return vec![Effect::ApplyTheme(theme)];
                 }
             }
+            Message::ListenPercentChosen(percent) => {
+                let before = self.playback.listen_percent();
+                self.playback.set_listen_percent(percent);
+                if self.playback.listen_percent() != before {
+                    return vec![Effect::SaveListenPercent(self.playback.listen_percent())];
+                }
+            }
             Message::PlaylistChosen(id) => {
                 if self.playlists.choose(id) {
                     self.rebuild_playlist_rows();
@@ -505,6 +519,7 @@ impl Model {
             theme: crate::theme::saved(),
             ..Self::default()
         };
+        model.playback.set_listen_percent(listening::saved());
         match tab_store::load() {
             Ok(Some(tabs)) => model.tabs = tabs,
             Ok(None) => {}
@@ -589,6 +604,27 @@ impl Model {
             self.saved = now;
             Effect::SaveSession(self.session())
         })
+    }
+
+    /// Counts the tracks the player has had listened to, here and in the
+    /// library.
+    fn record_plays(&mut self) -> Vec<Effect> {
+        let effects: Vec<Effect> = self
+            .playback
+            .take_plays()
+            .into_iter()
+            .map(|track_id| {
+                if let Some(&position) = self.track_positions.get(&track_id) {
+                    let track = &mut self.tracks[position];
+                    track.play_count = track.play_count.saturating_add(1);
+                }
+                Effect::Library(LibraryCommand::RecordPlay(track_id))
+            })
+            .collect();
+        if !effects.is_empty() {
+            self.rebuild_listing(Listing::MostPlayed);
+        }
+        effects
     }
 
     /// The naming prompt's name, when it has one, makes the playlist or
@@ -687,9 +723,14 @@ impl Model {
     /// Takes tracks that are new or differ from what the library told
     /// before: moved, changed, back or gone absent.
     fn merge_tracks(&mut self, tracks: Vec<Track>) -> Vec<Effect> {
-        for track in tracks {
+        for mut track in tracks {
             match self.track_positions.get(&track.id) {
-                Some(&position) => self.tracks[position] = track,
+                Some(&position) => {
+                    // Counts only grow: a change told before a listen
+                    // reached the library does not take it back.
+                    track.play_count = track.play_count.max(self.tracks[position].play_count);
+                    self.tracks[position] = track;
+                }
                 None => {
                     self.track_positions.insert(track.id, self.tracks.len());
                     self.tracks.push(track);
@@ -854,6 +895,7 @@ impl Model {
         match listing {
             Listing::Library => Some((self.sort_column, self.sort_direction)),
             Listing::RecentlyAdded => Some((SortColumn::Added, SortDirection::Descending)),
+            Listing::MostPlayed => Some((SortColumn::Plays, SortDirection::Descending)),
             Listing::Playlist => None,
         }
     }
@@ -870,15 +912,29 @@ impl Model {
     }
 
     fn rebuild_projection(&mut self) {
-        self.listed = Listing::ALL.map(|listing| match self.sort_of(listing) {
-            Some((column, direction)) => crate::library::matching_track_indices(
-                &self.tracks,
-                &self.search_query,
-                column,
-                direction,
-            ),
-            None => self.playlist_rows(),
-        });
+        self.listed = Listing::ALL.map(|listing| self.listing_rows(listing));
+    }
+
+    fn rebuild_listing(&mut self, listing: Listing) {
+        self.listed[listing.index()] = self.listing_rows(listing);
+    }
+
+    /// Where in `tracks` the rows of `listing` are, as it is to be shown.
+    fn listing_rows(&self, listing: Listing) -> Vec<usize> {
+        let Some((column, direction)) = self.sort_of(listing) else {
+            return self.playlist_rows();
+        };
+        let mut rows = crate::library::matching_track_indices(
+            &self.tracks,
+            &self.search_query,
+            column,
+            direction,
+        );
+        if listing == Listing::MostPlayed {
+            // Only what was listened to.
+            rows.retain(|&position| self.tracks[position].play_count > 0);
+        }
+        rows
     }
 
     fn rebuild_playlist_rows(&mut self) {
@@ -1076,6 +1132,52 @@ mod tests {
         assert_eq!(listed, [3, 1, 2]);
 
         let _ = update(&mut app, Message::TrackPressed(recent, 1));
+        assert_eq!(queued_ids(&app), [3, 1, 2]);
+        assert_eq!(current_id(&app), Some(1));
+    }
+
+    #[test]
+    fn most_played_lists_what_was_listened_to_the_most_often_first() {
+        let mut app = app_with_three_tracks();
+        for (track, plays) in app.tracks.iter_mut().zip([2, 0, 5]) {
+            track.play_count = plays;
+        }
+        app.rebuild_projection();
+
+        let most = Listing::MostPlayed;
+        let listed = |app: &Model| -> Vec<i64> {
+            (0..app.rows(most).len())
+                .filter_map(|row| app.listed_track(most, row).map(|track| track.id))
+                .collect()
+        };
+        assert_eq!(listed(&app), [3, 1]);
+
+        // A stale change from the library keeps the count.
+        let mut stale = app.tracks[app.track_positions[&1]].clone();
+        stale.play_count = 0;
+        let changed = Message::LibraryEvent(LibraryEvent::Changed(vec![stale]));
+        let _ = update(&mut app, changed);
+        assert_eq!(listed(&app), [3, 1]);
+
+        // A track listened to for the first time joins the list at once.
+        let (ticket, _) = loaded(&update(
+            &mut app,
+            Message::TrackPressed(Listing::Library, 2),
+        ));
+        let started = audio::Event::Started {
+            ticket,
+            duration: Some(Duration::from_secs(10)),
+        };
+        let _ = update(&mut app, Message::Player(started));
+        let position = audio::Event::Position {
+            ticket,
+            position: Duration::from_secs(1),
+        };
+        let _ = update(&mut app, Message::Player(position));
+        assert_eq!(listed(&app), [3, 1, 2]);
+
+        // Played from the list, the list is the queue.
+        let _ = update(&mut app, Message::TrackPressed(most, 1));
         assert_eq!(queued_ids(&app), [3, 1, 2]);
         assert_eq!(current_id(&app), Some(1));
     }
@@ -1376,6 +1478,39 @@ mod tests {
                 if position == Duration::from_secs(1)
         ));
         assert_eq!(app.playback.position_ms(), 1_000);
+    }
+
+    #[test]
+    fn a_track_heard_for_its_share_is_counted_here_and_in_the_library() {
+        let mut app = app_with_three_tracks();
+        let effects = update(&mut app, Message::ListenPercentChosen(50));
+        assert_eq!(effects, [Effect::SaveListenPercent(50)]);
+        assert!(update(&mut app, Message::ListenPercentChosen(50)).is_empty());
+
+        let (ticket, _) = loaded(&update(
+            &mut app,
+            Message::TrackPressed(Listing::Library, 1),
+        ));
+        let started = audio::Event::Started {
+            ticket,
+            duration: Some(Duration::from_secs(10)),
+        };
+        let _ = update(&mut app, Message::Player(started));
+        let mut recorded = Vec::new();
+        for second in 1..=8 {
+            let position = audio::Event::Position {
+                ticket,
+                position: Duration::from_secs(second),
+            };
+            recorded.extend(
+                update(&mut app, Message::Player(position))
+                    .into_iter()
+                    .filter(|effect| matches!(effect, Effect::Library(_))),
+            );
+        }
+        assert_eq!(recorded, [Effect::Library(LibraryCommand::RecordPlay(1))]);
+        assert_eq!(app.tracks[app.track_positions[&1]].play_count, 1);
+        assert_eq!(app.tracks[app.track_positions[&2]].play_count, 0);
     }
 
     #[test]

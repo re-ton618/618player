@@ -214,6 +214,11 @@ impl<E: FnMut(LibraryEvent) -> bool> Service<E> {
                 let done = self.cache.remove_from_playlist(playlist, track);
                 self.playlists_changed(done);
             }
+            LibraryCommand::RecordPlay(track) => {
+                if let Err(error) = self.cache.record_play(track) {
+                    self.fail(error);
+                }
+            }
         }
     }
 

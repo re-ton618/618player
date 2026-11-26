@@ -88,13 +88,22 @@ const ADDED: Column = Column {
     cell: |track| timestamp(track.modified_ns).unwrap_or_default(),
 };
 
+const PLAYS: Column = Column {
+    title: "PLAYS",
+    sort: SortColumn::Plays,
+    width: Width::Fixed(58.0),
+    cell: |track| track.play_count.to_string(),
+};
+
 const LIBRARY_COLUMNS: &[Column] = &[TITLE, ARTIST, ALBUM, YEAR, TIME];
 const RECENTLY_ADDED_COLUMNS: &[Column] = &[TITLE, ARTIST, ALBUM, ADDED, TIME];
+const MOST_PLAYED_COLUMNS: &[Column] = &[TITLE, ARTIST, ALBUM, PLAYS, TIME];
 
 const fn columns(listing: Listing) -> &'static [Column] {
     match listing {
         Listing::Library | Listing::Playlist => LIBRARY_COLUMNS,
         Listing::RecentlyAdded => RECENTLY_ADDED_COLUMNS,
+        Listing::MostPlayed => MOST_PLAYED_COLUMNS,
     }
 }
 

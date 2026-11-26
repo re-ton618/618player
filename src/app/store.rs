@@ -105,6 +105,7 @@ impl Store {
                     crate::theme::apply(theme);
                     crate::theme::save(theme);
                 }
+                Effect::SaveListenPercent(percent) => super::listening::save(percent),
             }
         }
     }

@@ -4,6 +4,7 @@ use std::fmt;
 pub(super) enum Kind {
     Library,
     RecentlyAdded,
+    MostPlayed,
     NowPlaying,
     SongInformation,
     Playlists,
@@ -12,9 +13,10 @@ pub(super) enum Kind {
 
 impl Kind {
     /// Every tab, in the order the + menu offers them.
-    pub(super) const ALL: [Self; 6] = [
+    pub(super) const ALL: [Self; 7] = [
         Self::Library,
         Self::RecentlyAdded,
+        Self::MostPlayed,
         Self::Playlists,
         Self::NowPlaying,
         Self::SongInformation,
@@ -25,6 +27,7 @@ impl Kind {
         match self {
             Self::Library => "Library",
             Self::RecentlyAdded => "Recently Added",
+            Self::MostPlayed => "Most Played",
             Self::NowPlaying => "Now Playing",
             Self::SongInformation => "Song Information",
             Self::Playlists => "Playlists",
@@ -36,6 +39,7 @@ impl Kind {
         match self {
             Self::Library => "library",
             Self::RecentlyAdded => "recently-added",
+            Self::MostPlayed => "most-played",
             Self::NowPlaying => "now-playing",
             Self::SongInformation => "song-information",
             Self::Playlists => "playlists",
@@ -282,7 +286,7 @@ mod tests {
         for kind in Kind::ALL {
             // A kind left out of `ALL` stops this from compiling.
             match kind {
-                L | Kind::RecentlyAdded | Kind::Playlists | N | S | G => {}
+                L | Kind::RecentlyAdded | Kind::MostPlayed | Kind::Playlists | N | S | G => {}
             }
             assert_eq!(Kind::from_slug(kind.slug()), Some(kind));
         }

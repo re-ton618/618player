@@ -74,6 +74,8 @@ pub(crate) enum LibraryCommand {
         playlist: i64,
         track: i64,
     },
+    /// The track of this id was listened to once more.
+    RecordPlay(i64),
 }
 
 #[derive(Debug, Clone)]

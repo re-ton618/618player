@@ -10,7 +10,7 @@ use rusqlite::{Connection, Transaction};
 
 type Migration = fn(&Transaction<'_>) -> rusqlite::Result<()>;
 
-const MIGRATIONS: &[Migration] = &[baseline, library_model];
+const MIGRATIONS: &[Migration] = &[baseline, library_model, play_counts];
 
 /// Brings `connection`'s schema up to this build's. A database a newer
 /// build has stepped further is refused rather than guessed at.
@@ -129,6 +129,12 @@ fn library_model(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
 
          UPDATE tracks SET metadata_state = 0 WHERE metadata_state IN (1, 3);",
     )
+}
+
+/// Step 3: how many times each track was listened to.
+fn play_counts(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
+    transaction
+        .execute_batch("ALTER TABLE tracks ADD COLUMN play_count INTEGER NOT NULL DEFAULT 0;")
 }
 
 #[cfg(test)]
