@@ -96,6 +96,14 @@ impl Player {
         // The engine only goes away with the app.
         let _ = self.commands.send(command);
     }
+
+    /// Another way in, for a thread outside the app's: the system's media
+    /// controls, which stop what plays when the app's UI went away with its
+    /// store.
+    #[cfg(target_os = "android")]
+    pub(crate) fn sender(&self) -> mpsc::Sender<Command> {
+        self.commands.clone()
+    }
 }
 
 /// The layout of interleaved frames: how many a second, of how many samples.

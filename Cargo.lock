@@ -3190,6 +3190,7 @@ dependencies = [
  "env_logger",
  "lofty",
  "log",
+ "ndk-context",
  "notify",
  "nsh-base",
  "nsh-core",

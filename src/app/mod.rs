@@ -2,6 +2,8 @@ mod input;
 mod layout;
 mod listening;
 mod listing;
+#[cfg(target_os = "android")]
+mod media_session;
 mod mobile;
 mod playback;
 mod playlists;

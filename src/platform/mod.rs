@@ -14,6 +14,9 @@ use android as system;
 use desktop as system;
 
 pub(crate) use system::{audio_dir, config_dir, data_local_dir, init, request_audio_access};
+/// The system's media controls; the desktop has none yet.
+#[cfg(target_os = "android")]
+pub(crate) use system::media;
 
 /// What came of asking for the device's music.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

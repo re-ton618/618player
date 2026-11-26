@@ -28,6 +28,9 @@ dirs = "6.0"
 
 [target.'cfg(target_os = "android")'.dependencies]
 log = "0.4"
+# The application `Context` nsh sets, for the media controls' JNI
+# (`src/platform/android/media.rs`); nsh's own, so it adds no crate.
+ndk-context = "0.1.1"
 # Asks for the device's music (`permissions`). Named here, as its library's
 # own name (`nsh`) is lost to the crate nsh generates from this file.
 nsh-android = { package = "nsh-platform-android", version = "0.7.1", default-features = false, features = ["svg"] }

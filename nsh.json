@@ -10,7 +10,13 @@
   "android": {
     "permissions": [
       "android.permission.READ_MEDIA_AUDIO",
-      "android.permission.READ_EXTERNAL_STORAGE"
+      "android.permission.READ_EXTERNAL_STORAGE",
+      "android.permission.FOREGROUND_SERVICE",
+      "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+    ],
+    "libraries": ["android/media.jar"],
+    "application": [
+      "<service android:name=\"com.player618.media.PlaybackService\" android:exported=\"false\" android:foregroundServiceType=\"mediaPlayback\" />"
     ]
   }
 }

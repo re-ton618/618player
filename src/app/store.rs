@@ -31,6 +31,8 @@ impl Store {
         let player = audio::Player::spawn(move |event| events.send(event).is_ok());
         // The volume the last run was at, before anything sounds.
         player.send(audio::Command::Volume(model.playback.volume()));
+        #[cfg(target_os = "android")]
+        let player_for_media = player.sender();
         let store = Self {
             model: signal_with(model, SignalEquals::Never),
             lists: Listing::ALL.map(|_| element_ref()),
@@ -51,6 +53,8 @@ impl Store {
             }
         });
         super::input::bind(move |message| store.dispatch(Message::Tabs(message)));
+        #[cfg(target_os = "android")]
+        super::media_session::bind(store, player_for_media);
         store.request_audio_access();
         store
     }
