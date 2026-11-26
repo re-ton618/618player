@@ -19,10 +19,10 @@ fn native(registry: &mut Registry) {
     registry.register::<App>();
 }
 
-/// The app's root: the store, and the main window that shows it.
+/// The app's root: the store (which draws the app in its saved theme), and
+/// the main window that shows it.
 #[component]
 pub fn App() -> impl IntoElement {
-    theme::install();
     let store = app::Store::new();
     provide_context(store);
     app_window()

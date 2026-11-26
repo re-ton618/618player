@@ -25,6 +25,8 @@ impl Store {
         let (events, mut reports) = unbounded_channel();
         let (library_events, mut library_reports) = unbounded_channel();
         let model = Model::restored();
+        // The theme the last run was in, before anything is drawn.
+        crate::theme::apply(model.theme);
         let player = audio::Player::spawn(move |event| events.send(event).is_ok());
         // The volume the last run was at, before anything sounds.
         player.send(audio::Command::Volume(model.playback.volume()));
@@ -84,6 +86,10 @@ impl Store {
                 Effect::SaveSession(session) => self.session.with(|writer| writer.save(session)),
                 Effect::FlushSession(session) => {
                     self.session.with(|writer| writer.flush(session));
+                }
+                Effect::ApplyTheme(theme) => {
+                    crate::theme::apply(theme);
+                    crate::theme::save(theme);
                 }
             }
         }

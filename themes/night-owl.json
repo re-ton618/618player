@@ -1,0 +1,28 @@
+{
+  "cssVars": {
+    "theme": {
+      "radius": "0px",
+      "background": "#011627",
+      "foreground": "#d6deeb",
+      "card": "#01111d",
+      "card-foreground": "#d6deeb",
+      "popover": "#0b2942",
+      "popover-foreground": "#d6deeb",
+      "primary": "#82aaff",
+      "primary-foreground": "#011627",
+      "secondary": "#0b2942",
+      "secondary-foreground": "#d6deeb",
+      "muted": "#0b2942",
+      "muted-foreground": "#89a4bb",
+      "accent": "#0b2942",
+      "accent-foreground": "#d6deeb",
+      "destructive": "#ef5350",
+      "border": "#122d42",
+      "input": "#122d42",
+      "ring": "#82aaff",
+      "text-faint": "#637777",
+      "warning": "#ecc48d",
+      "success": "#addb67"
+    }
+  }
+}

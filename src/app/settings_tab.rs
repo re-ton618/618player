@@ -10,16 +10,19 @@ pub(super) enum Category {
     Library,
     /// What the queue does at its end, and the volume.
     Playback,
+    /// The theme the app is drawn in.
+    Appearance,
 }
 
 impl Category {
     /// Every category, in the order the list shows them.
-    pub(super) const ALL: [Self; 2] = [Self::Library, Self::Playback];
+    pub(super) const ALL: [Self; 3] = [Self::Library, Self::Playback, Self::Appearance];
 
     pub(super) const fn label(self) -> &'static str {
         match self {
             Self::Library => "Library",
             Self::Playback => "Playback",
+            Self::Appearance => "Appearance",
         }
     }
 }

@@ -50,6 +50,8 @@ pub(crate) struct Model {
     tabs: tabs::State,
     /// The category the Settings tab shows.
     settings_category: settings_tab::Category,
+    /// The theme the app is drawn in.
+    theme: crate::theme::Id,
     playback: playback::State,
     /// The tracks that play one after another, and which of them is
     /// current.
@@ -85,6 +87,7 @@ impl Default for Model {
             sort_direction: SortDirection::Ascending,
             tabs: tabs::State::default(),
             settings_category: settings_tab::Category::default(),
+            theme: crate::theme::Id::default(),
             playback: playback::State::default(),
             queue: queue::State::default(),
             playback_failures: 0,
@@ -144,6 +147,8 @@ enum Message {
     Tabs(tabs::Message),
     /// The Settings tab is to show this category.
     SettingsCategoryPressed(settings_tab::Category),
+    /// A theme was chosen (the Settings tab).
+    ThemeChosen(crate::theme::Id),
     /// The window is about to close.
     Closing,
 }
@@ -162,6 +167,8 @@ enum Effect {
     SaveSession(session::Session),
     /// Saves the session before the app goes: waited for.
     FlushSession(session::Session),
+    /// Draws the app in this theme, and keeps it for the next launch.
+    ApplyTheme(crate::theme::Id),
 }
 
 /// Takes `message`, and with it keeps two promises whatever it was: the
@@ -402,6 +409,12 @@ impl Model {
                 }
             }
             Message::SettingsCategoryPressed(category) => self.settings_category = category,
+            Message::ThemeChosen(theme) => {
+                if self.theme != theme {
+                    self.theme = theme;
+                    return vec![Effect::ApplyTheme(theme)];
+                }
+            }
             // The session is given out by `update`.
             Message::Closing => {}
         }
@@ -412,7 +425,10 @@ impl Model {
     /// The model at start: the workspace's tabs and the session as they
     /// were saved.
     fn restored() -> Self {
-        let mut model = Self::default();
+        let mut model = Self {
+            theme: crate::theme::saved(),
+            ..Self::default()
+        };
         match tab_store::load() {
             Ok(Some(tabs)) => model.tabs = tabs,
             Ok(None) => {}
@@ -1856,5 +1872,16 @@ mod tests {
             Message::SettingsCategoryPressed(settings_tab::Category::Playback),
         );
         assert_eq!(app.settings_category, settings_tab::Category::Playback);
+    }
+
+    #[test]
+    fn choosing_a_theme_applies_it_once() {
+        let mut app = Model::default();
+        assert_eq!(app.theme, crate::theme::Id::default());
+        let effects = update(&mut app, Message::ThemeChosen(crate::theme::Id::Dracula));
+        assert!(effects.contains(&Effect::ApplyTheme(crate::theme::Id::Dracula)));
+        assert_eq!(app.theme, crate::theme::Id::Dracula);
+        let effects = update(&mut app, Message::ThemeChosen(crate::theme::Id::Dracula));
+        assert!(!effects.iter().any(|effect| matches!(effect, Effect::ApplyTheme(_))));
     }
 }
