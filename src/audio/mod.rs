@@ -25,6 +25,13 @@ pub(crate) enum Command {
         ticket: u64,
         path: PathBuf,
     },
+    /// Replaces what plays with the file at `path`, paused at `position`:
+    /// where the last run left off. [`Command::Play`] starts it there.
+    Cue {
+        ticket: u64,
+        path: PathBuf,
+        position: Duration,
+    },
     /// Has the file at `path` play on when the loaded one ends, with no
     /// gap between them. It replaces the file queued before, and goes
     /// with the next load.
@@ -32,6 +39,9 @@ pub(crate) enum Command {
         ticket: u64,
         path: PathBuf,
     },
+    /// Takes the queued file back: the loaded one ends with nothing
+    /// behind it.
+    Unqueue,
     Play,
     Pause,
     /// Moves within the loaded file.
@@ -260,6 +270,59 @@ mod tests {
         });
     }
 
+    /// As the smoke tests above, for the first file: cued, it waits where
+    /// it was cued until it is played, and goes on from there.
+    #[test]
+    #[ignore = "needs an audio output and PLAYER_SMOKE_FILES"]
+    fn smoke_cues_a_file_paused_at_a_position() {
+        let files = std::env::var("PLAYER_SMOKE_FILES").expect("PLAYER_SMOKE_FILES is set");
+        let path = files.split(';').find(|path| !path.is_empty()).unwrap();
+        let (sender, events) = mpsc::channel();
+        let player = Player::spawn(move |event| sender.send(event).is_ok());
+        player.send(Command::Volume(0));
+        let target = Duration::from_secs(2);
+        player.send(Command::Cue {
+            ticket: 1,
+            path: PathBuf::from(path),
+            position: target,
+        });
+        expect(&events, "start", |event| {
+            matches!(event, Event::Started { ticket: 1, .. }).then_some(())
+        });
+        let landed = expect(&events, "the cued position", |event| match event {
+            Event::Position {
+                ticket: 1,
+                position,
+            } => Some(*position),
+            _ => None,
+        });
+        assert!(
+            landed.abs_diff(target) < Duration::from_millis(250),
+            "cued {target:?}, landed {landed:?}"
+        );
+
+        // Cued, it does not move.
+        std::thread::sleep(Duration::from_millis(800));
+        assert!(events.try_recv().is_err(), "{path}: moved while cued");
+
+        // Played, it goes on from there, at the pace of a clock.
+        player.send(Command::Play);
+        let played = Instant::now();
+        let position = expect(&events, "progress", |event| match event {
+            Event::Position {
+                ticket: 1,
+                position,
+            } => (*position >= target + Duration::from_millis(600)).then_some(*position),
+            _ => None,
+        });
+        let took = played.elapsed();
+        assert!(
+            (position - target).abs_diff(took) < Duration::from_millis(400),
+            "{:?} of the file took {took:?}",
+            position - target
+        );
+    }
+
     #[test]
     fn a_missing_file_fails_without_ending_the_engine() {
         let (sender, events) = mpsc::channel();
@@ -272,5 +335,14 @@ mod tests {
             let failed = events.recv_timeout(PATIENCE).expect("the load is answered");
             assert!(matches!(failed, Event::Failed { ticket: failed, .. } if failed == ticket));
         }
+        // Cued or taken back with nothing loaded, it goes on as well.
+        player.send(Command::Unqueue);
+        player.send(Command::Cue {
+            ticket: 3,
+            path: PathBuf::from("/no/such/file.flac"),
+            position: Duration::from_secs(1),
+        });
+        let failed = events.recv_timeout(PATIENCE).expect("the cue is answered");
+        assert!(matches!(failed, Event::Failed { ticket: 3, .. }));
     }
 }

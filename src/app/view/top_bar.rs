@@ -7,7 +7,7 @@ use crate::app::Message;
 use crate::app::store::store;
 use crate::app::tabs::{Kind, Message as TabMessage};
 use crate::theme as tokens;
-use crate::ui::{Icon, Tone, chrome_button, chrome_glyph, chrome_text_button};
+use crate::ui::{Icon, Tone, bar_menu, chrome_button, chrome_glyph, chrome_text_glyph, menu_row};
 
 /// The search cell, its edges included.
 const SEARCH_WIDTH: f32 = 300.0;
@@ -35,9 +35,10 @@ pub(super) fn top_bar() -> impl IntoElement {
         .flex_row()
         .h_full()
         .child(
-            chrome_text_button("File", move || store.dispatch(Message::FileMenuPressed))
-                .border_r_1()
-                .border_color(border),
+            bar_menu(chrome_text_glyph("File").border_r_1().border_color(border))
+                .child(menu_row("Add Folder to Library…", move || {
+                    store.dispatch(Message::AddFolderPressed)
+                })),
         )
         .child(
             chrome_button(

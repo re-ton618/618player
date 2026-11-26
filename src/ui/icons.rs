@@ -14,6 +14,9 @@ pub(crate) enum Icon {
     Play,
     Pause,
     Next,
+    Shuffle,
+    Repeat,
+    RepeatOne,
     SortAscending,
     SortDescending,
     Search,
@@ -33,6 +36,15 @@ impl Icon {
             Self::Play => r#"<path d="M6 3l14 9-14 9z"/>"#,
             Self::Pause => r#"<path d="M8 4v16M16 4v16"/>"#,
             Self::Next => r#"<path d="M5 4l10 8-10 8z"/><path d="M19 5v14"/>"#,
+            Self::Shuffle => {
+                r#"<path d="m18 14 4 4-4 4"/><path d="m18 2 4 4-4 4"/><path d="M2 18h2l3-2 6-8 3-2h6"/><path d="M2 6h2l3 2 1 1.3"/><path d="M22 18h-6l-3-2-1-1.3"/>"#
+            }
+            Self::Repeat => {
+                r#"<path d="m17 2 4 4-4 4"/><path d="M3 11V6h18"/><path d="m7 22-4-4 4-4"/><path d="M21 13v5H3"/>"#
+            }
+            Self::RepeatOne => {
+                r#"<path d="m17 2 4 4-4 4"/><path d="M3 11V6h18"/><path d="m7 22-4-4 4-4"/><path d="M21 13v5H3"/><path d="M11 10h1v4"/>"#
+            }
             Self::SortAscending => r#"<path d="m18 15-6-6-6 6"/>"#,
             Self::SortDescending => r#"<path d="m6 9 6 6 6-6"/>"#,
             Self::Search => r#"<circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/>"#,

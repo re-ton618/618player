@@ -1,6 +1,8 @@
 mod add_tab_menu;
 mod library;
+mod now_playing;
 mod playback;
+mod settings;
 mod tab_strip;
 mod top_bar;
 mod volume_control;

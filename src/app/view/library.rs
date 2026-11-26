@@ -4,7 +4,7 @@ use nsh_core::prelude::*;
 use crate::app::Message;
 use crate::app::store::{Store, store};
 use crate::library::{SortColumn, SortDirection, Track};
-use crate::ui::{Icon, caption};
+use crate::ui::{Icon, caption, menu_row, subject_menu};
 
 /// A track row, its bottom line included.
 const ROW_HEIGHT: f32 = 32.0;
@@ -141,7 +141,8 @@ fn header(store: Store) -> impl IntoElement {
 }
 
 /// A cell of the list: it shows whichever row it is given. A line with
-/// its bottom edge; the current track is `card` with accent text.
+/// its bottom edge; the current track is `card` with accent text. A press
+/// plays it; the secondary button opens the menu that queues it.
 fn track_row(store: Store, at: Position) -> impl IntoElement {
     let row = store.select(move |model| model.visible_track(at.index()).map(Row::of));
     let current_id = store.select(|model| model.current_track().map(|track| track.id));
@@ -175,7 +176,14 @@ fn track_row(store: Store, at: Position) -> impl IntoElement {
         )
     };
 
-    button()
+    // The track the cell shows when it is asked about, not when it was made.
+    let ask = move |message: fn(i64) -> Message| {
+        if let Some(id) = row.with_untracked(|row| row.as_ref().map(|row| row.id)) {
+            store.dispatch(message(id));
+        }
+    };
+
+    let line = button()
         .h(px(ROW_HEIGHT))
         .flex_row()
         .gap(px(CELL_GAP))
@@ -186,15 +194,17 @@ fn track_row(store: Store, at: Position) -> impl IntoElement {
         .style_when(current, |s| s.bg(move || theme().card))
         .hover(|s| s.bg(move || theme().card))
         .active(|s| s.bg(move || theme().border))
-        .on_press(move || {
-            if let Some(id) = row.with_untracked(|row| row.as_ref().map(|row| row.id)) {
-                store.dispatch(Message::TrackPressed(id));
-            }
-        })
+        .on_press(move || ask(Message::TrackPressed))
         .children(
             COLUMNS
                 .iter()
                 .enumerate()
                 .map(|(index, &(_, _, width))| cell(index, width)),
-        )
+        );
+
+    subject_menu(line)
+        .child(menu_row("Play Next", move || ask(Message::PlayNextPressed)))
+        .child(menu_row("Add to Queue", move || {
+            ask(Message::AddToQueuePressed)
+        }))
 }

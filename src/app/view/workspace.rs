@@ -1,7 +1,7 @@
 use nsh_base::theme;
 use nsh_core::prelude::*;
 
-use super::{library, tab_strip};
+use super::{library, now_playing, settings, tab_strip};
 use crate::app::store::store;
 use crate::app::tabs::Kind;
 use crate::ui::strip;
@@ -22,9 +22,9 @@ pub(super) fn workspace() -> impl IntoElement {
         .child(library::library());
     let other = dynamic(move || match active.get() {
         Some(Kind::Library) => view().into_element(),
-        Some(Kind::NowPlaying) => message("Playback details will appear here.").into_element(),
+        Some(Kind::NowPlaying) => now_playing::now_playing().into_element(),
         Some(Kind::SongInformation) => message("Song details will appear here.").into_element(),
-        Some(Kind::Settings) => view().flex_1().into_element(),
+        Some(Kind::Settings) => settings::settings().into_element(),
         None => message("No tabs open. Use + to open one.").into_element(),
     });
 

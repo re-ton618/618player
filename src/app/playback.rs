@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use nsh_core::prelude::SharedString;
@@ -22,8 +22,13 @@ pub(super) enum Report {
     /// Nothing: the state took it, or it was about an older load or seek.
     Handled,
     /// The player went on to the track queued behind the current one,
-    /// which the caller now selects.
-    Advanced(i64),
+    /// as the queue's entry of this key, which the caller now selects.
+    Advanced(u64),
+    /// The player went on to a track that was queued behind the current
+    /// one and has been replaced or taken back since: the word did not
+    /// reach it in time. The current track is over all the same, and what
+    /// is heard is not what the queue says comes next.
+    Strayed,
     /// The current track played to its end, with nothing queued behind it.
     Finished,
     /// The current track cannot be played.
@@ -118,6 +123,9 @@ pub(super) struct State {
     last_ticket: u64,
     /// The track the player plays on with when the current one ends.
     queued: Option<Queued>,
+    /// The tickets of tracks that were queued behind the current one
+    /// before that one.
+    replaced: Vec<u64>,
     position_ms: u64,
     duration_ms: Option<u64>,
 }
@@ -125,7 +133,9 @@ pub(super) struct State {
 #[derive(Debug, Clone)]
 struct Queued {
     ticket: u64,
-    track_id: i64,
+    /// The key of the queue's entry it was queued as.
+    entry: u64,
+    path: PathBuf,
     duration_ms: Option<u64>,
 }
 
@@ -140,6 +150,7 @@ impl Default for State {
             ticket: 0,
             last_ticket: 0,
             queued: None,
+            replaced: Vec::new(),
             position_ms: 0,
             duration_ms: None,
         }
@@ -241,6 +252,7 @@ impl State {
         self.duration_ms = track.duration_ms;
         // The player drops what was queued behind the track before.
         self.queued = None;
+        self.replaced.clear();
         self.ticket = self.next_ticket();
         Command::Load {
             ticket: self.ticket,
@@ -248,22 +260,67 @@ impl State {
         }
     }
 
-    /// Has the player go on with `track` when the loaded one ends, with no
-    /// gap between them; nothing when stopped.
-    pub(super) fn queue(&mut self, track: &Track) -> Option<Command> {
+    /// Loads `track`, which the caller has selected, paused at
+    /// `position_ms`: where the last run left it.
+    pub(super) fn cue(&mut self, track: &Track, position_ms: u64) -> Command {
+        self.transport = Transport::Paused;
+        self.duration_ms = track.duration_ms;
+        self.position_ms = self
+            .duration_ms
+            .map_or(position_ms, |end| position_ms.min(end));
+        self.queued = None;
+        self.replaced.clear();
+        self.ticket = self.next_ticket();
+        Command::Cue {
+            ticket: self.ticket,
+            path: track.path.clone(),
+            position: Duration::from_millis(self.position_ms),
+        }
+    }
+
+    /// Has the player go on with `track`, the queue's entry `entry`, when
+    /// the loaded one ends, with no gap between them; nothing when
+    /// stopped.
+    pub(super) fn queue(&mut self, track: &Track, entry: u64) -> Option<Command> {
         if self.transport == Transport::Stopped {
             return None;
         }
+        self.forget_queued();
         let ticket = self.next_ticket();
         self.queued = Some(Queued {
             ticket,
-            track_id: track.id,
+            entry,
+            path: track.path.clone(),
             duration_ms: track.duration_ms,
         });
         Some(Command::Queue {
             ticket,
             path: track.path.clone(),
         })
+    }
+
+    /// Has the player end with the loaded track; nothing when none is
+    /// queued behind it.
+    pub(super) fn unqueue(&mut self) -> Option<Command> {
+        self.queued.as_ref()?;
+        self.forget_queued();
+        Some(Command::Unqueue)
+    }
+
+    /// The queue's entry and the file the player has behind the loaded
+    /// track.
+    pub(super) fn queued(&self) -> Option<(u64, &Path)> {
+        self.queued
+            .as_ref()
+            .map(|queued| (queued.entry, queued.path.as_path()))
+    }
+
+    /// The player may have gone on to what was queued before it hears
+    /// otherwise: its ticket is kept to know that by.
+    fn forget_queued(&mut self) {
+        if let Some(queued) = self.queued.take() {
+            self.replaced.push(queued.ticket);
+        }
     }
 
     /// Pauses what plays and resumes what is paused; nothing when stopped,
@@ -302,6 +359,7 @@ impl State {
         self.transport = Transport::Stopped;
         self.position_ms = 0;
         self.queued = None;
+        self.replaced.clear();
         // What the player still reports of the dropped track is stale.
         self.ticket = self.next_ticket();
         Command::Stop
@@ -313,9 +371,18 @@ impl State {
             && let Some(queued) = self.queued.take_if(|queued| queued.ticket == *ticket)
         {
             self.ticket = queued.ticket;
+            self.replaced.clear();
             self.position_ms = 0;
             self.duration_ms = duration.map(millis).or(queued.duration_ms);
-            return Report::Advanced(queued.track_id);
+            return Report::Advanced(queued.entry);
+        }
+        if let Event::Started { ticket, .. } = &event
+            && self.replaced.contains(ticket)
+        {
+            // Whatever is queued now is behind the file the player went
+            // on to, not behind the current track.
+            self.replaced.clear();
+            return Report::Strayed;
         }
         match event {
             Event::Started { ticket, duration } if ticket == self.ticket => {
@@ -342,6 +409,7 @@ impl State {
         self.last_ticket
     }
 
+    #[cfg(test)]
     pub(super) fn current_track_id(&self) -> Option<i64> {
         self.current.as_ref().map(|current| current.track_id)
     }
@@ -576,7 +644,8 @@ mod tests {
             album_track(2, "two", "album"),
         );
         let mut playback = State::default();
-        assert_eq!(playback.queue(&two), None);
+        assert_eq!(playback.queue(&two, 9), None);
+        assert_eq!(playback.unqueue(), None);
 
         let _ = playback.select(&one);
         let Command::Load { ticket: first, .. } = playback.play(&one) else {
@@ -585,11 +654,12 @@ mod tests {
         let Some(Command::Queue {
             ticket: second,
             path,
-        }) = playback.queue(&two)
+        }) = playback.queue(&two, 9)
         else {
             panic!("a playing track takes one behind it");
         };
         assert_eq!(path, two.path);
+        assert_eq!(playback.queued(), Some((9, two.path.as_path())));
 
         // The current track still reports, and a seek in it keeps the queue.
         let position = Event::Position {
@@ -606,7 +676,8 @@ mod tests {
             ticket: second,
             duration: Some(Duration::from_secs(7)),
         };
-        assert_eq!(playback.report(started.clone()), Report::Advanced(2));
+        assert_eq!(playback.report(started.clone()), Report::Advanced(9));
+        assert_eq!(playback.queued(), None);
         assert_eq!(playback.position_ms(), 0);
         assert_eq!(playback.duration_ms(), Some(7_000));
         // The track before it is over, whatever still arrives of it.
@@ -631,7 +702,7 @@ mod tests {
             let mut playback = State::default();
             let _ = playback.select(&one);
             let _ = playback.play(&one);
-            let Some(Command::Queue { ticket, .. }) = playback.queue(&two) else {
+            let Some(Command::Queue { ticket, .. }) = playback.queue(&two, 9) else {
                 panic!("a playing track takes one behind it");
             };
             let _ = if stop {
@@ -646,6 +717,90 @@ mod tests {
             };
             assert_eq!(playback.report(started), Report::Handled);
         }
+    }
+
+    #[test]
+    fn the_player_going_on_to_a_track_that_was_replaced_or_taken_back_is_told() {
+        let (one, two, three) = (
+            album_track(1, "one", "album"),
+            album_track(2, "two", "album"),
+            album_track(3, "three", "album"),
+        );
+        let started = |ticket| Event::Started {
+            ticket,
+            duration: None,
+        };
+
+        // Replaced: the player had gone on to the one queued before.
+        let mut playback = State::default();
+        let _ = playback.select(&one);
+        let _ = playback.play(&one);
+        let Some(Command::Queue { ticket: old, .. }) = playback.queue(&two, 8) else {
+            panic!("a playing track takes one behind it");
+        };
+        let Some(Command::Queue { ticket: new, .. }) = playback.queue(&three, 9) else {
+            panic!("a queued track is replaced");
+        };
+        assert_eq!(playback.report(started(old)), Report::Strayed);
+        // Told once: what is queued now is no longer behind the current
+        // track, and the caller loads what it wants.
+        assert_eq!(playback.report(started(old)), Report::Handled);
+        let _ = playback.play(&three);
+        assert_eq!(playback.report(started(new)), Report::Handled);
+
+        // Taken back.
+        let mut playback = State::default();
+        let _ = playback.select(&one);
+        let _ = playback.play(&one);
+        let Some(Command::Queue { ticket: old, .. }) = playback.queue(&two, 8) else {
+            panic!("a playing track takes one behind it");
+        };
+        assert_eq!(playback.unqueue(), Some(Command::Unqueue));
+        assert_eq!(playback.queued(), None);
+        assert_eq!(playback.unqueue(), None);
+        assert_eq!(playback.report(started(old)), Report::Strayed);
+
+        // The one that is queued is gone on to as ever.
+        let mut playback = State::default();
+        let _ = playback.select(&one);
+        let _ = playback.play(&one);
+        let _ = playback.queue(&two, 8);
+        let Some(Command::Queue { ticket: new, .. }) = playback.queue(&three, 9) else {
+            panic!("a queued track is replaced");
+        };
+        assert_eq!(playback.report(started(new)), Report::Advanced(9));
+    }
+
+    #[test]
+    fn a_cued_track_is_paused_at_its_position_and_plays_from_there() {
+        let mut track = album_track(1, "one", "album");
+        track.duration_ms = Some(60_000);
+        let mut playback = State::default();
+        let _ = playback.select(&track);
+
+        let Command::Cue {
+            ticket,
+            path,
+            position,
+        } = playback.cue(&track, 90_000)
+        else {
+            panic!("cueing loads the track paused");
+        };
+
+        assert_eq!(path, track.path);
+        // Held to the track, as a seek is.
+        assert_eq!(position, Duration::from_secs(60));
+        assert_eq!(playback.transport(), Transport::Paused);
+        assert_eq!(playback.position_ms(), 60_000);
+        let moved = Event::Position {
+            ticket,
+            position: Duration::from_secs(59),
+        };
+        assert_eq!(playback.report(moved), Report::Handled);
+        assert_eq!(playback.position_ms(), 59_000);
+        assert!(playback.queue(&track, 2).is_some());
+        assert_eq!(playback.toggle(), Some(Command::Play));
+        assert_eq!(playback.transport(), Transport::Playing);
     }
 
     #[test]

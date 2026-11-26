@@ -1,40 +1,52 @@
 //! The app's store: the [`Model`] in one signal, the only writer of it, and
 //! the effects its updates ask for.
 
-use std::sync::mpsc;
-
+use nsh_core::file_dialog::OpenDialog;
 use nsh_core::prelude::*;
 use tokio::sync::mpsc::unbounded_channel;
 
-use super::{Effect, Message, Model, playback, update};
+use super::{Effect, Message, Model, playback, session, update};
 use crate::audio;
-use crate::library::{self, LibraryEvent};
+use crate::library::{self, Library};
 
 #[derive(Clone, Copy)]
 pub(crate) struct Store {
     model: Signal<Model>,
     library_list: ElementRef,
     player: Stored<audio::Player>,
+    library: Stored<Library>,
+    session: Stored<session::Writer>,
 }
 
 impl Store {
-    /// Made once, by the root: restores the workspace, starts the player
-    /// and starts indexing.
+    /// Made once, by the root: restores the workspace and the session,
+    /// and starts the player and the library.
     pub(crate) fn new() -> Self {
         let (events, mut reports) = unbounded_channel();
+        let (library_events, mut library_reports) = unbounded_channel();
+        let model = Model::restored();
+        let player = audio::Player::spawn(move |event| events.send(event).is_ok());
+        // The volume the last run was at, before anything sounds.
+        player.send(audio::Command::Volume(model.playback.volume()));
         let store = Self {
-            model: signal_with(Model::restored(), SignalEquals::Never),
+            model: signal_with(model, SignalEquals::Never),
             library_list: element_ref(),
-            player: stored(audio::Player::spawn(move |event| {
-                events.send(event).is_ok()
+            player: stored(player),
+            library: stored(Library::spawn(move |event| {
+                library_events.send(event).is_ok()
             })),
+            session: stored(session::Writer::spawn()),
         };
         spawn(async move {
             while let Some(event) = reports.recv().await {
                 store.dispatch(Message::Player(event));
             }
         });
-        store.index_library();
+        spawn(async move {
+            while let Some(event) = library_reports.recv().await {
+                store.dispatch(Message::LibraryEvent(event));
+            }
+        });
         super::input::bind(move |message| store.dispatch(Message::Tabs(message)));
         store
     }
@@ -54,6 +66,11 @@ impl Store {
         computed(move || model.with(&read))
     }
 
+    /// The window is about to close: the session is saved before it does.
+    pub(crate) fn closing(&self) {
+        self.dispatch(Message::Closing);
+    }
+
     pub(super) fn dispatch(&self, message: Message) {
         let mut effects = Vec::new();
         self.model.update(|model| effects = update(model, message));
@@ -62,6 +79,12 @@ impl Store {
                 Effect::LoadArtwork(request) => self.load_artwork(request),
                 Effect::ScrollLibraryToTop => self.library_list.scroll_to_offset(px(0.0), false),
                 Effect::Player(command) => self.player.with(|player| player.send(command)),
+                Effect::PickFolder => self.pick_folder(),
+                Effect::Library(command) => self.library.with(|library| library.send(command)),
+                Effect::SaveSession(session) => self.session.with(|writer| writer.save(session)),
+                Effect::FlushSession(session) => {
+                    self.session.with(|writer| writer.flush(session));
+                }
             }
         }
     }
@@ -81,29 +104,22 @@ impl Store {
         });
     }
 
-    /// Indexes the library on a thread of its own and applies each event as
-    /// it arrives.
-    fn index_library(&self) {
+    /// Asks the user for folders to add to the library, in the system's
+    /// dialog.
+    fn pick_folder(&self) {
         let store = *self;
-        let (sender, receiver) = mpsc::channel();
-        std::thread::spawn(move || library::index(|event| sender.send(event).is_ok()));
+        let dialog = OpenDialog::folders()
+            .multiple(true)
+            .title("Add folder to library")
+            .button_label("Add folder");
         spawn(async move {
-            let mut receiver = receiver;
-            loop {
-                let received = blocking(move || {
-                    let event = receiver.recv();
-                    (receiver, event)
-                })
-                .await;
-                let Ok((back, Ok(event))) = received else {
-                    break;
-                };
-                receiver = back;
-                let done = matches!(event, LibraryEvent::Complete | LibraryEvent::Failed(_));
-                store.dispatch(Message::LibraryEvent(event));
-                if done {
-                    break;
+            match pick_paths(dialog).await {
+                Ok(picked) => {
+                    for path in picked.into_iter().flatten() {
+                        store.dispatch(Message::FolderPicked(path));
+                    }
                 }
+                Err(error) => eprintln!("Folder dialog failed: {error}"),
             }
         });
     }

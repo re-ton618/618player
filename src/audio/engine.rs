@@ -52,9 +52,12 @@ pub(super) fn run(commands: Receiver<Command>, emit: impl FnMut(Event) -> bool) 
         // Everything asked so far. A seek that another seek or a load
         // follows is skipped: dragging the position asks for many.
         let pending: Vec<Command> = command.into_iter().chain(commands.try_iter()).collect();
-        let last_move = pending
-            .iter()
-            .rposition(|command| matches!(command, Command::Seek { .. } | Command::Load { .. }));
+        let last_move = pending.iter().rposition(|command| {
+            matches!(
+                command,
+                Command::Seek { .. } | Command::Load { .. } | Command::Cue { .. }
+            )
+        });
         for (index, command) in pending.into_iter().enumerate() {
             let superseded = matches!(command, Command::Seek { .. })
                 && last_move.is_some_and(|last| index < last);
@@ -151,7 +154,24 @@ impl<E: FnMut(Event) -> bool> Engine<E> {
                     self.emit(Event::Failed { ticket, error });
                 }
             },
+            Command::Cue {
+                ticket,
+                path,
+                position,
+            } => match self.load(ticket, &path) {
+                Ok(duration) => {
+                    self.emit(Event::Started { ticket, duration });
+                    self.seek(ticket, position);
+                    // Loaded and silent until it is played.
+                    self.set_playing(false);
+                }
+                Err(error) => {
+                    self.silence();
+                    self.emit(Event::Failed { ticket, error });
+                }
+            },
             Command::Queue { ticket, path } => self.queue(ticket, &path),
+            Command::Unqueue => self.unqueue(),
             Command::Play => {
                 if self.session.is_some() {
                     self.set_playing(true);
@@ -190,18 +210,10 @@ impl<E: FnMut(Event) -> bool> Engine<E> {
     /// Has the file at `path` play on when the loaded one ends. One that
     /// does not open is left out: the loaded file then just ends.
     fn queue(&mut self, ticket: u64, path: &Path) {
-        let Some(session) = &self.session else {
-            return;
-        };
-        if session.finished {
+        if self.session.as_ref().is_none_or(|session| session.finished) {
             return;
         }
-        // The file queued before may be in the feed already, behind the
-        // loaded one: the feed starts again from what is heard.
-        if let (Some(_), Some(output)) = (session.next_start(), &self.output) {
-            let (heard, position) = (session.ticket, session.position(output.format()));
-            self.seek(heard, position);
-        }
+        self.unqueue();
         let next = match Decoder::open(path) {
             Ok(decoder) => Some(Next {
                 ticket,
@@ -216,6 +228,14 @@ impl<E: FnMut(Event) -> bool> Engine<E> {
         };
         if let Some(session) = &mut self.session {
             session.next = next;
+        }
+    }
+
+    /// Takes the queued file back: the loaded one ends with nothing
+    /// behind it.
+    fn unqueue(&mut self) {
+        if let (Some(session), Some(output)) = (&mut self.session, &self.output) {
+            session.unqueue(output.format(), || output.begin());
         }
     }
 
@@ -402,6 +422,17 @@ impl Session {
             }
         }
         true
+    }
+
+    /// Takes the queued file back. It may be in the feed already, behind
+    /// the file that is heard: the feed (`begin` makes one) then starts
+    /// again from what is heard. `format` is the output's.
+    fn unqueue(&mut self, format: Format, begin: impl FnOnce() -> Feed) {
+        if self.next_start().is_some() {
+            let (heard, position) = (self.ticket, self.position(format));
+            self.seek(heard, position, begin);
+        }
+        self.next = None;
     }
 
     /// Tops the ring up, then tells what happened: the queued file began
@@ -753,6 +784,104 @@ mod tests {
             Some(Event::Position { ticket: 3, position }) if *position == Duration::from_millis(500)
         ));
         assert!(events.contains(&Event::Finished { ticket: 2 }));
+    }
+
+    #[test]
+    fn a_queued_file_taken_back_leaves_the_loaded_one_to_end_alone() {
+        let (_folder, first, second, whole) = two_halves();
+        let format = Format {
+            rate: RATE,
+            channels: 1,
+        };
+        let (mut session, _source) = session(&first, &second, format);
+        // Both files fit the ring: the queued one is in it already.
+        let _ = session.advance(format);
+        assert_eq!(session.next_start(), Some(HALF as u64));
+
+        let (feed, mut source) = Feed::new(format);
+        session.unqueue(format, || feed);
+        assert!(session.next.is_none());
+        let (heard, events) = play_out(&mut session, &mut source, format);
+
+        // Nothing was heard yet: the first file plays whole, and ends.
+        assert_same(&heard, &whole[..HALF]);
+        assert_eq!(events.last(), Some(&Event::Finished { ticket: 1 }));
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, Event::Started { .. }))
+        );
+
+        // Queued again after it was taken back, a file plays on as ever.
+        let (feed, mut source) = Feed::new(format);
+        let mut session = Session::new(1, Decoder::open(&first).unwrap(), feed);
+        session.unqueue(format, || unreachable!("nothing is queued"));
+        session.next = Some(Next {
+            ticket: 2,
+            decoder: Decoder::open(&second).unwrap(),
+            start: None,
+            decoded: false,
+        });
+        let (heard, _) = play_out(&mut session, &mut source, format);
+        assert_same(&heard, &whole);
+    }
+
+    #[test]
+    fn a_file_queued_behind_itself_repeats_without_a_gap() {
+        let (_folder, first, _, whole) = two_halves();
+        let format = Format {
+            rate: RATE,
+            channels: 1,
+        };
+        let (mut session, mut source) = session(&first, &first, format);
+
+        let (heard, events) = play_out(&mut session, &mut source, format);
+
+        assert_eq!(heard.len(), HALF * 2);
+        assert_same(&heard[..HALF], &whole[..HALF]);
+        assert_same(&heard[HALF..], &whole[..HALF]);
+        assert!(events.contains(&Event::Finished { ticket: 2 }));
+    }
+
+    #[test]
+    fn a_cued_file_waits_at_its_position_and_plays_on_from_there() {
+        let (_folder, first, second, whole) = two_halves();
+        let format = Format {
+            rate: RATE,
+            channels: 1,
+        };
+        // What the engine does for `Command::Cue`: a load, then a seek.
+        let (feed, _unheard) = Feed::new(format);
+        let mut session = Session::new(4, Decoder::open(&first).unwrap(), feed);
+        let (feed, mut source) = Feed::new(format);
+        assert!(session.seek(4, Duration::from_millis(250), || feed));
+
+        // Paused, nothing takes from the feed: however often the engine
+        // looks, the position holds and nothing ends.
+        let mut events = Vec::new();
+        for _ in 0..5 {
+            events.extend(session.advance(format).into_iter().flatten());
+        }
+        assert_eq!(
+            events,
+            [Event::Position {
+                ticket: 4,
+                position: Duration::from_millis(250)
+            }]
+        );
+
+        // The file that follows is queued behind it as behind any other.
+        session.next = Some(Next {
+            ticket: 5,
+            decoder: Decoder::open(&second).unwrap(),
+            start: None,
+            decoded: false,
+        });
+        let (heard, events) = play_out(&mut session, &mut source, format);
+
+        let from = RATE as usize / 4;
+        assert_same(&heard, &whole[from..]);
+        assert!(events.contains(&Event::Finished { ticket: 5 }));
     }
 
     #[test]

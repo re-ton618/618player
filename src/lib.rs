@@ -23,12 +23,15 @@ fn native(registry: &mut Registry) {
 #[component]
 pub fn App() -> impl IntoElement {
     theme::install();
-    provide_context(app::Store::new());
+    let store = app::Store::new();
+    provide_context(store);
     app_window()
         .id("main")
         .title(TITLE)
         .default_size(settings::default_size())
         .default_position(WindowPosition::Center)
         .attributes(settings::window_attributes())
+        // However it is closed: where playback is goes into the session.
+        .on_close_press(move |_| store.closing())
         .content(app::root)
 }

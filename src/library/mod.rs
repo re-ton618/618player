@@ -1,138 +1,93 @@
+//! The music library: the folders the user made it of, the tracks found
+//! under them, and the albums and artists those are of. UI-free; the app
+//! drives it with [`LibraryCommand`]s and follows it by [`LibraryEvent`]s.
+//!
+//! It runs on a thread of its own ([`Library`]), which owns the database,
+//! reads the tags and watches the folders, so that none of it holds the
+//! UI thread.
+
 mod artwork;
 mod cache;
+mod catalog;
 mod filter;
 mod metadata;
-mod scanner;
-mod track;
-
+mod migrations;
 #[cfg(test)]
+mod scale;
+mod scanner;
+mod service;
+mod track;
+mod watcher;
+
 use std::path::PathBuf;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub(crate) use artwork::load_embedded_data_uri;
+pub(crate) use catalog::Catalog;
 pub(crate) use filter::{SortColumn, SortDirection, matching_track_indices};
+pub(crate) use service::Library;
 pub(crate) use track::{Track, TrackUpdate};
 
-use cache::Cache;
-use metadata::MetadataJob;
+/// A folder the library is made of.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Folder {
+    pub(crate) id: i64,
+    pub(crate) path: PathBuf,
+    /// The folder is there: not on a drive that is unplugged, nor deleted.
+    pub(crate) available: bool,
+}
 
-const METADATA_BATCH_SIZE: usize = 64;
-const MAX_METADATA_WORKERS: usize = 4;
+/// What the app asks of the library.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum LibraryCommand {
+    /// Makes the folder part of the library, and scans it.
+    AddFolder(PathBuf),
+    /// Takes the folder of this id out of the library. Its tracks go
+    /// absent and keep their ids.
+    RemoveFolder(i64),
+}
 
 #[derive(Debug, Clone)]
 pub(crate) enum LibraryEvent {
-    Cached(Vec<Track>),
-    Reconciled(Vec<Track>),
+    /// Every track the database has, as the last run left them: there at
+    /// once, before any folder is looked at. Absent tracks are among them.
+    Loaded(Vec<Track>),
+    /// The library's folders, whenever one is added, removed, lost or back.
+    Folders(Vec<Folder>),
+    /// Tracks that are new, moved, changed, back or gone absent since.
+    Changed(Vec<Track>),
     MetadataBatch(Vec<TrackUpdate>),
+    /// The library is as the disk is, and every tag is read; until the
+    /// next change.
     Complete,
     Failed(String),
 }
 
-/// Indexes the music directory, reporting each stage through `emit`; stops
-/// early once `emit` returns false (nobody listens any more). Blocking: run
-/// it on its own thread.
-pub(crate) fn index(mut emit: impl FnMut(LibraryEvent) -> bool) {
-    let mut cache = match Cache::open() {
-        Ok(cache) => cache,
-        Err(error) => {
-            emit(LibraryEvent::Failed(error.to_string()));
-            return;
-        }
-    };
-    let cached = match cache.load_tracks() {
-        Ok(tracks) => tracks,
-        Err(error) => {
-            emit(LibraryEvent::Failed(error.to_string()));
-            return;
-        }
-    };
-    if !emit(LibraryEvent::Cached(cached.clone())) {
-        return;
-    }
-
-    let discovered = match scanner::scan_music_directory() {
-        Ok(discovered) => discovered,
-        Err(error) => {
-            emit(LibraryEvent::Failed(error));
-            return;
-        }
-    };
-    let prepared = match cache.prepare_scan(discovered, &cached) {
-        Ok(prepared) => prepared,
-        Err(error) => {
-            emit(LibraryEvent::Failed(error.to_string()));
-            return;
-        }
-    };
-    if !emit(LibraryEvent::Reconciled(prepared.tracks)) {
-        return;
-    }
-
-    for jobs in prepared.metadata_jobs.chunks(METADATA_BATCH_SIZE) {
-        let updates = extract_batch(jobs);
-        if let Err(error) = cache.store_updates(&updates) {
-            emit(LibraryEvent::Failed(error.to_string()));
-            return;
-        }
-        if !emit(LibraryEvent::MetadataBatch(updates)) {
-            return;
-        }
-    }
-
-    emit(LibraryEvent::Complete);
-}
-
-fn extract_batch(jobs: &[MetadataJob]) -> Vec<TrackUpdate> {
-    if jobs.len() <= 1 {
-        return jobs.iter().map(metadata::extract).collect();
-    }
-
-    let worker_count = std::thread::available_parallelism()
-        .map_or(1, usize::from)
-        .min(MAX_METADATA_WORKERS)
-        .min(jobs.len());
-    let next_job = AtomicUsize::new(0);
-    let updates = Mutex::new(Vec::with_capacity(jobs.len()));
-
-    std::thread::scope(|scope| {
-        for _ in 0..worker_count {
-            scope.spawn(|| {
-                loop {
-                    let index = next_job.fetch_add(1, Ordering::Relaxed);
-                    let Some(job) = jobs.get(index) else {
-                        break;
-                    };
-                    updates
-                        .lock()
-                        .expect("metadata update lock poisoned")
-                        .push(metadata::extract(job));
-                }
-            });
-        }
-    });
-
-    let mut updates = updates.into_inner().expect("metadata update lock poisoned");
-    updates.sort_unstable_by_key(|update| update.id);
-    updates
+/// A made-up library of `count` tagged tracks: albums of twelve, ten
+/// albums an artist, every tenth album a compilation.
+#[cfg(test)]
+pub(crate) fn test_library(count: usize) -> Vec<Track> {
+    (0..count).map(scale::generated_track).collect()
 }
 
 #[cfg(test)]
 pub(crate) fn test_track(id: i64, path: PathBuf, album: Option<&str>) -> Track {
-    Track::from_cache(
-        id,
-        path.clone(),
-        path,
-        1,
-        1,
-        None,
-        format!("Track {id}"),
-        None,
-        album.map(str::to_owned),
-        None,
-        None,
-        None,
-        None,
+    Track::new(
+        track::FileRecord {
+            id,
+            folder_id: Some(1),
+            path: path.clone(),
+            relative_path: path,
+            size: 1,
+            modified_ns: 1,
+            file_identity: None,
+            present: true,
+        },
+        track::Metadata {
+            // Sorted by title, they are in the order of their ids.
+            title: format!("Track {id:03}"),
+            album: album.map(str::to_owned),
+            ..track::Metadata::default()
+        },
         track::MetadataState::Ready,
         None,
     )

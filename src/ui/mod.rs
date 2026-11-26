@@ -6,11 +6,13 @@
 //! the cells' own edges, drawn by whoever owns the seam.
 
 mod icons;
+mod menus;
 
 use nsh_base::{ButtonElement, button, theme};
 use nsh_core::prelude::*;
 
 pub(crate) use icons::Icon;
+pub(crate) use menus::{bar_menu, menu_row, subject_menu};
 
 use crate::theme as tokens;
 
@@ -89,13 +91,25 @@ pub(crate) fn chrome_text_button(
         .px(px(LABEL_CELL_PADDING))
         .accessibility_label(label)
         .on_press(on_press)
-        .child(
-            text(label)
-                .text_size(px(12.0))
-                .number_of_lines(1)
-                .text_color(move || theme().muted_foreground)
-                .group_hover(|s| s.text_color(move || theme().foreground)),
-        )
+        .child(cell_label(label))
+}
+
+/// A [`chrome_text_button`]'s look with no press of its own: the trigger
+/// of a menu.
+pub(crate) fn chrome_text_glyph(label: &'static str) -> View {
+    chrome_states!(view())
+        .px(px(LABEL_CELL_PADDING))
+        .role(AccessibilityRole::Button)
+        .label(label)
+        .child(cell_label(label))
+}
+
+fn cell_label(label: &'static str) -> Text {
+    text(label)
+        .text_size(px(12.0))
+        .number_of_lines(1)
+        .text_color(move || theme().muted_foreground)
+        .group_hover(|s| s.text_color(move || theme().foreground))
 }
 
 fn glyph(icon: Icon, size: f32, tone: Tone) -> Svg {

@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 
 use super::Track;
+use super::catalog::compare_in_album;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SortColumn {
@@ -33,6 +34,7 @@ impl SortDirection {
     }
 }
 
+/// Where in `tracks` the present ones that match `query` are, sorted.
 pub(crate) fn matching_track_indices(
     tracks: &[Track],
     query: &str,
@@ -44,7 +46,8 @@ pub(crate) fn matching_track_indices(
         .iter()
         .enumerate()
         .filter_map(|(index, track)| {
-            (query.is_empty() || track.search_key().contains(&query)).then_some(index)
+            (track.present && (query.is_empty() || track.search_key().contains(&query)))
+                .then_some(index)
         })
         .collect();
 
@@ -70,11 +73,15 @@ fn compare_tracks(
             right.artist.as_ref().map(|_| right.artist_key()),
             direction,
         ),
+        // Albums by title, and each album's tracks together in disc and
+        // track order whichever way the albums run.
         SortColumn::Album => compare_optional_text(
             left.album.as_ref().map(|_| left.album_key()),
             right.album.as_ref().map(|_| right.album_key()),
             direction,
-        ),
+        )
+        .then_with(|| direction.apply(left.album_identity().cmp(right.album_identity())))
+        .then_with(|| compare_in_album(left, right)),
         SortColumn::Year => compare_optional(left.year, right.year, direction),
         SortColumn::Duration => compare_optional(left.duration_ms, right.duration_ms, direction),
     }
@@ -103,29 +110,40 @@ fn compare_optional_text(
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
-    use crate::library::track::MetadataState;
+    use crate::library::track::Metadata;
+    use crate::library::track::tests::track_at;
 
     fn track(id: i64, title: &str, artist: Option<&str>, year: Option<u32>) -> Track {
-        Track::from_cache(
+        track_at(
             id,
-            PathBuf::from(format!("/music/{title}.mp3")),
-            PathBuf::from(format!("{title}.mp3")),
-            1,
-            1,
-            None,
-            title.into(),
-            artist.map(str::to_owned),
-            None,
-            year,
-            None,
-            None,
-            None,
-            MetadataState::Ready,
-            None,
+            &format!("{title}.mp3"),
+            Metadata {
+                title: title.into(),
+                artist: artist.map(str::to_owned),
+                year,
+                ..Metadata::default()
+            },
         )
+    }
+
+    fn album_track(id: i64, album: &str, artist: &str, disc: u32, number: u32) -> Track {
+        track_at(
+            id,
+            &format!("{artist}/{album}/{disc}-{number}.flac"),
+            Metadata {
+                title: format!("Track {id}"),
+                album: Some(album.into()),
+                album_artist: Some(artist.into()),
+                disc_number: Some(disc),
+                track_number: Some(number),
+                ..Metadata::default()
+            },
+        )
+    }
+
+    fn ids(tracks: &[Track], indices: Vec<usize>) -> Vec<i64> {
+        indices.into_iter().map(|index| tracks[index].id).collect()
     }
 
     #[test]
@@ -162,5 +180,62 @@ mod tests {
             matching_track_indices(&tracks, "", SortColumn::Year, SortDirection::Descending),
             vec![1, 2, 0]
         );
+    }
+
+    #[test]
+    fn search_reaches_album_artist_genre_and_composer_and_skips_absent_tracks() {
+        let tagged = |id: i64, title: &str, change: fn(&mut Metadata)| {
+            let mut metadata = Metadata {
+                title: title.into(),
+                ..Metadata::default()
+            };
+            change(&mut metadata);
+            track_at(id, &format!("{title}.mp3"), metadata)
+        };
+        let mut tracks = [
+            tagged(1, "One", |tags| {
+                tags.album_artist = Some("The Ensemble".into())
+            }),
+            tagged(2, "Two", |tags| tags.genre = Some("Baroque".into())),
+            tagged(3, "Three", |tags| tags.composer = Some("Telemann".into())),
+            tagged(4, "Four", |tags| tags.composer = Some("Telemann".into())),
+        ];
+        tracks[3].present = false;
+        let found = |query: &str| {
+            ids(
+                &tracks,
+                matching_track_indices(&tracks, query, SortColumn::Title, SortDirection::Ascending),
+            )
+        };
+
+        assert_eq!(found("ensemble"), [1]);
+        assert_eq!(found("BAROQUE"), [2]);
+        assert_eq!(found("telemann"), [3]);
+        assert_eq!(found(""), [1, 3, 2]);
+    }
+
+    #[test]
+    fn sorting_by_album_keeps_each_album_together_in_disc_and_track_order() {
+        let tracks = [
+            album_track(1, "Hits", "Queen", 1, 2),
+            album_track(2, "Hits", "ABBA", 1, 2),
+            album_track(3, "Hits", "Queen", 1, 1),
+            album_track(4, "Hits", "ABBA", 1, 1),
+            album_track(5, "Box", "Band", 2, 1),
+            album_track(6, "Box", "Band", 1, 10),
+            album_track(7, "Box", "Band", 1, 9),
+            track(8, "Loose", None, None),
+        ];
+        let sorted = |direction| {
+            ids(
+                &tracks,
+                matching_track_indices(&tracks, "", SortColumn::Album, direction),
+            )
+        };
+
+        // Two albums of one title do not mix; the albumless come last.
+        assert_eq!(sorted(SortDirection::Ascending), [7, 6, 5, 4, 2, 3, 1, 8]);
+        // Descending turns the albums around, not the tracks within one.
+        assert_eq!(sorted(SortDirection::Descending), [3, 1, 4, 2, 7, 6, 5, 8]);
     }
 }

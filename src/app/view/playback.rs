@@ -5,6 +5,7 @@ use nsh_core::prelude::*;
 use super::{BAR_CELL_WIDTH, BAR_ICON_SIZE, PLAYBACK_BAR_HEIGHT, volume_control};
 use crate::app::Message;
 use crate::app::playback::Transport;
+use crate::app::queue::Repeat;
 use crate::app::store::{Store, store};
 use crate::theme::CHROME_BORDER_WIDTH;
 use crate::ui::{Icon, Tone, caption, chrome_button};
@@ -26,8 +27,8 @@ const PROGRESS_STEP_MS: f64 = 1_000.0;
 const TIME_TEXT_SIZE: f32 = 10.0;
 
 /// The bar under the workspace: artwork and transport on the left, the
-/// progress in the middle, the volume on the right. Leading cells own
-/// their right edge, the volume its left.
+/// progress in the middle, shuffle, repeat and the volume on the right.
+/// Leading cells own their right edge, trailing ones their left.
 pub(super) fn playback_bar() -> impl IntoElement {
     let store = store();
     let border = move || theme().border;
@@ -40,6 +41,17 @@ pub(super) fn playback_bar() -> impl IntoElement {
         .border_color(border)
     };
     let playing = store.select(|model| model.playback.transport() == Transport::Playing);
+    // The modes of the queue: accent while on, as the transport's cell is.
+    let mode = move |icon, label, tone, message: Message| {
+        chrome_button(icon, BAR_ICON_SIZE, label, tone, move || {
+            store.dispatch(message.clone())
+        })
+        .w(px(BAR_CELL_WIDTH))
+        .border_l_1()
+        .border_color(border)
+    };
+    let shuffled = store.select(|model| model.queue.shuffled());
+    let repeat = store.select(|model| model.queue.repeat());
 
     let left = view()
         .w(px(SIDE_REGION_WIDTH))
@@ -79,6 +91,32 @@ pub(super) fn playback_bar() -> impl IntoElement {
         .flex_shrink_0()
         .flex_row()
         .justify_end()
+        .child(
+            when(shuffled, move || {
+                mode(
+                    Icon::Shuffle,
+                    "Shuffle, on",
+                    Tone::Accent,
+                    Message::ShufflePressed,
+                )
+            })
+            .otherwise(move || {
+                mode(
+                    Icon::Shuffle,
+                    "Shuffle, off",
+                    Tone::Quiet,
+                    Message::ShufflePressed,
+                )
+            }),
+        )
+        .child(dynamic(move || {
+            let (icon, label, tone) = match repeat.get() {
+                Repeat::Off => (Icon::Repeat, "Repeat, off", Tone::Quiet),
+                Repeat::All => (Icon::Repeat, "Repeat, all", Tone::Accent),
+                Repeat::One => (Icon::RepeatOne, "Repeat, one", Tone::Accent),
+            };
+            mode(icon, label, tone, Message::RepeatPressed).into_element()
+        }))
         .child(volume_control::volume_control(BAR_CELL_WIDTH));
 
     view()
