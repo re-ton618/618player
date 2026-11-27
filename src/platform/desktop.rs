@@ -1,5 +1,9 @@
-//! macOS, Windows and Linux: the user's own folders, and music any program
-//! may read.
+//! macOS, Windows and Linux: the user's own folders, music any program may
+//! read, the system's media controls ([`media`]) and Discord's Rich
+//! Presence ([`presence`]).
+
+pub(crate) mod media;
+pub(crate) mod presence;
 
 use std::path::PathBuf;
 

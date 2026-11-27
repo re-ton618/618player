@@ -31,7 +31,6 @@ impl Store {
         let player = audio::Player::spawn(move |event| events.send(event).is_ok());
         // The volume the last run was at, before anything sounds.
         player.send(audio::Command::Volume(model.playback.volume()));
-        #[cfg(target_os = "android")]
         let player_for_media = player.sender();
         let store = Self {
             model: signal_with(model, SignalEquals::Never),
@@ -53,7 +52,6 @@ impl Store {
             }
         });
         super::input::bind(move |message| store.dispatch(Message::Tabs(message)));
-        #[cfg(target_os = "android")]
         super::media_session::bind(store, player_for_media);
         store.request_audio_access();
         store
@@ -140,6 +138,7 @@ impl Store {
                     crate::theme::save(theme);
                 }
                 Effect::SaveListenPercent(percent) => super::listening::save(percent),
+                Effect::ChooseDiscordPresence(shown) => crate::platform::presence::choose(shown),
             }
         }
     }

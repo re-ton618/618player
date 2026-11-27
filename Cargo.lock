@@ -3201,12 +3201,14 @@ dependencies = [
  "rtrb",
  "rubato",
  "rusqlite",
+ "serde_json",
  "symphonia",
  "symphonia-opus",
  "tempfile",
  "tokio",
  "walkdir",
  "winapi-util",
+ "windows",
 ]
 
 [[package]]

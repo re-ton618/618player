@@ -3,18 +3,18 @@
 //! (the artwork of its first track, its name and what it holds) over its
 //! tracks, listed as the library's are.
 
-use nsh_base::{ButtonElement, alert_dialog, button, theme};
+use nsh_base::{alert_dialog, button, theme, ButtonElement};
 use nsh_core::element::ImageSrc;
 use nsh_core::prelude::*;
 
 use super::format::total_duration;
 use super::track_list::track_list;
-use crate::app::Message;
 use crate::app::listing::Listing;
 use crate::app::playlists::Summary;
-use crate::app::store::{Store, store};
+use crate::app::store::{store, Store};
+use crate::app::Message;
 use crate::theme::{self as tokens, CHROME_BORDER_WIDTH};
-use crate::ui::{Icon, Tone, caption, chrome_button, menu_row, strip, subject_menu};
+use crate::ui::{caption, chrome_button, menu_row, strip, subject_menu, Icon, Tone};
 
 /// The playlist column, its right edge included: as wide as the Settings
 /// tab's categories.

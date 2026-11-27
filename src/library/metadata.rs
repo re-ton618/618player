@@ -5,7 +5,7 @@ use lofty::file::{AudioFile, FileType, TaggedFileExt};
 use lofty::probe::Probe;
 use lofty::tag::{Accessor, ItemKey, Tag};
 
-use super::track::{Metadata, MetadataState, ReplayGain, TrackUpdate, fallback_title};
+use super::track::{fallback_title, Metadata, MetadataState, ReplayGain, TrackUpdate};
 
 /// What R128 gains (Opus) are measured against sits this far under
 /// ReplayGain's reference level, in dB.

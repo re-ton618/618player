@@ -4,9 +4,9 @@
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use super::cache::{Cache, CacheResult};
@@ -423,18 +423,16 @@ fn extract_batch(jobs: &[MetadataJob]) -> Vec<TrackUpdate> {
 
     std::thread::scope(|scope| {
         for _ in 0..worker_count {
-            scope.spawn(|| {
-                loop {
-                    let index = next_job.fetch_add(1, Ordering::Relaxed);
-                    let Some(job) = jobs.get(index) else {
-                        break;
-                    };
-                    let update = metadata::extract(job);
-                    updates
-                        .lock()
-                        .expect("metadata update lock poisoned")
-                        .push(update);
-                }
+            scope.spawn(|| loop {
+                let index = next_job.fetch_add(1, Ordering::Relaxed);
+                let Some(job) = jobs.get(index) else {
+                    break;
+                };
+                let update = metadata::extract(job);
+                updates
+                    .lock()
+                    .expect("metadata update lock poisoned")
+                    .push(update);
             });
         }
     });
@@ -450,12 +448,12 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    use tempfile::{TempDir, tempdir};
+    use tempfile::{tempdir, TempDir};
 
     use super::*;
-    use crate::library::Track;
     use crate::library::metadata::tests::write_wav;
     use crate::library::track::MetadataState;
+    use crate::library::Track;
 
     const PATIENCE: Duration = Duration::from_secs(20);
 
@@ -636,14 +634,12 @@ mod tests {
         let (home, music) = music();
         let mut library = Following::start(home.path(), &music);
         library.until("the first scan", |library| library.present().len() == 4);
-        assert!(
-            library
-                .present()
-                .iter()
-                .all(|track| track.metadata_state == MetadataState::Ready
-                    && track.sample_rate == Some(44_100)
-                    && track.duration_ms == Some(100))
-        );
+        assert!(library
+            .present()
+            .iter()
+            .all(|track| track.metadata_state == MetadataState::Ready
+                && track.sample_rate == Some(44_100)
+                && track.duration_ms == Some(100)));
         assert_eq!(
             library.folders,
             [Folder {

@@ -3,7 +3,6 @@ mod layout;
 mod listening;
 mod listing;
 mod lyrics;
-#[cfg(target_os = "android")]
 mod media_session;
 mod mobile;
 mod playback;
@@ -72,6 +71,8 @@ pub(crate) struct Model {
     settings_category: settings_tab::Category,
     /// The theme the app is drawn in.
     theme: crate::theme::Id,
+    /// Whether what plays shows on Discord (the Settings tab).
+    discord_presence: bool,
     playback: playback::State,
     /// The tracks that play one after another, and which of them is
     /// current.
@@ -112,6 +113,7 @@ impl Default for Model {
             tabs: tabs::State::default(),
             settings_category: settings_tab::Category::default(),
             theme: crate::theme::Id::default(),
+            discord_presence: false,
             playback: playback::State::default(),
             queue: queue::State::default(),
             playback_failures: 0,
@@ -178,6 +180,8 @@ enum Message {
     /// The share of a track, in percent, to hear before it counts as
     /// listened to (the Settings tab).
     ListenPercentChosen(u8),
+    /// What plays is to show on Discord, or not (the Settings tab).
+    DiscordPresenceChosen(bool),
     /// The Playlists tab is to show the playlist of this id.
     PlaylistChosen(i64),
     /// The naming prompt is to ask for a new playlist's name; the
@@ -230,6 +234,8 @@ enum Effect {
     ApplyTheme(crate::theme::Id),
     /// Keeps the listening threshold, in percent, for the next launch.
     SaveListenPercent(u8),
+    /// Shows what plays on Discord or takes it down, and keeps the choice.
+    ChooseDiscordPresence(bool),
 }
 
 /// Takes `message`, and with it keeps two promises whatever it was: the
@@ -481,6 +487,12 @@ impl Model {
                     return vec![Effect::SaveListenPercent(self.playback.listen_percent())];
                 }
             }
+            Message::DiscordPresenceChosen(shown) => {
+                if self.discord_presence != shown {
+                    self.discord_presence = shown;
+                    return vec![Effect::ChooseDiscordPresence(shown)];
+                }
+            }
             Message::PlaylistChosen(id) => {
                 if self.playlists.choose(id) {
                     self.rebuild_playlist_rows();
@@ -545,6 +557,7 @@ impl Model {
     fn restored() -> Self {
         let mut model = Self {
             theme: crate::theme::saved(),
+            discord_presence: crate::platform::presence::saved(),
             ..Self::default()
         };
         model.playback.set_listen_percent(listening::saved());
@@ -552,6 +565,9 @@ impl Model {
             Ok(Some(tabs)) => model.tabs = tabs,
             Ok(None) => {}
             Err(error) => eprintln!("Workspace restore failed: {error}"),
+        }
+        if Layout::current() == Layout::Mobile {
+            model.tabs = std::mem::take(&mut model.tabs).stacked();
         }
         // Shuffles differ from one run to the next.
         let seed = std::time::SystemTime::now()

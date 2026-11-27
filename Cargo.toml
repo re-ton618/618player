@@ -5,6 +5,11 @@ edition = "2024"
 rust-version = "1.97"
 license = "GPL-3.0-only"
 
+# A package name can't start with a digit; the executable's can.
+[[bin]]
+name = "618Player"
+path = "src/main.rs"
+
 [dependencies]
 cpal = "0.18.2"
 env_logger = "0.11"
@@ -25,6 +30,9 @@ walkdir = "2.5"
 # The user's folders (`src/platform/desktop.rs`).
 [target.'cfg(not(target_os = "android"))'.dependencies]
 dirs = "6.0"
+# Discord's Rich Presence (`src/platform/desktop/presence.rs`). Already built
+# for nsh, so it adds no crate.
+serde_json = "1"
 
 [target.'cfg(target_os = "android")'.dependencies]
 log = "0.4"
@@ -43,6 +51,9 @@ nsh-platform-macos = { version = "0.7.1", default-features = false, features = [
 
 [target.'cfg(target_os = "windows")'.dependencies]
 nsh-platform-windows = { version = "0.7.1", default-features = false, features = ["svg"] }
+# The system's media controls (`src/platform/desktop/media/smtc.rs`); nsh's
+# own, so it adds no crate.
+windows = { version = "0.62", features = ["Foundation", "Media", "Media_Playback", "Storage_Streams"] }
 # A file's volume serial and index, which name it through a rename; std keeps
 # them unstable. Already built for walkdir, so it adds no crate.
 winapi-util = "0.1"

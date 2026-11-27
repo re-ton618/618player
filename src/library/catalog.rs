@@ -161,8 +161,8 @@ fn commonest(values: impl Iterator<Item = u32>) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library::track::Metadata;
     use crate::library::track::tests::track_at;
+    use crate::library::track::Metadata;
 
     struct Tags<'a> {
         album: &'a str,

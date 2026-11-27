@@ -22,16 +22,10 @@ const THUMB_CLASS: &str =
 /// scrolls, shown also while the pointer is on it. Once, before the views
 /// are drawn.
 pub(crate) fn use_app_scrollbars() {
-    set_scrollbar_theme(Some(app_scrollbar(ScrollbarMode::Hover)));
+    set_scrollbar_theme(Some(app_scrollbar()));
 }
 
-/// The app's bar, shown only while the view scrolls: for views the pointer
-/// crosses all the time (the tab strip), where a hover would show it.
-pub(crate) fn scrolling_only_scrollbar() -> ScrollbarTheme {
-    app_scrollbar(ScrollbarMode::Scrolling)
-}
-
-fn app_scrollbar(mode: ScrollbarMode) -> ScrollbarTheme {
+fn app_scrollbar() -> ScrollbarTheme {
     let look = |class: &'static str| {
         let mut look = ScrollbarLook::default();
         look.class = Some(SharedString::from(class));
@@ -40,7 +34,7 @@ fn app_scrollbar(mode: ScrollbarMode) -> ScrollbarTheme {
     };
 
     let mut theme = ScrollbarTheme::default();
-    theme.mode = mode;
+    theme.mode = ScrollbarMode::Hover;
     theme.motion.idle = IDLE;
     theme.motion.enter = ENTER;
     theme.motion.exit = EXIT;

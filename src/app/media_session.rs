@@ -1,5 +1,6 @@
 //! The system's media controls (Android's notification, lock screen and
-//! headset buttons, [`crate::platform::media`]): they show what the model
+//! headset buttons; Windows' flyout, lock screen and media keys,
+//! [`crate::platform::media`]): they show what the model
 //! says plays, and what the user asks of them comes back as the messages
 //! the app's own buttons send.
 

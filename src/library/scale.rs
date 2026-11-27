@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use super::cache::Cache;
 use super::catalog::Catalog;
-use super::filter::{SortColumn, SortDirection, matching_track_indices};
+use super::filter::{matching_track_indices, SortColumn, SortDirection};
 use super::scanner::{self, DiscoveredTrack};
 use super::track::{FileRecord, Metadata, MetadataState, Track, TrackUpdate};
 

@@ -40,13 +40,13 @@ const HORIZONTAL_PADDING: f32 = 10.0;
 
 /// What the tab shows of the current track, worked out once per change.
 #[derive(Debug, Clone, PartialEq)]
-struct Details {
-    title: SharedString,
-    artist: Option<SharedString>,
+pub(in crate::app) struct Details {
+    pub(in crate::app) title: SharedString,
+    pub(in crate::app) artist: Option<SharedString>,
     /// The album and its year.
-    album: Option<SharedString>,
+    pub(in crate::app) album: Option<SharedString>,
     /// Codec, rate, depth and channels, as a tag.
-    format: SharedString,
+    pub(in crate::app) format: SharedString,
     /// What is wrong with what is known of it.
     notice: Option<SharedString>,
     sections: Vec<Section>,
@@ -67,7 +67,7 @@ struct Field {
 }
 
 impl Details {
-    fn of(track: &Track) -> Self {
+    pub(in crate::app) fn of(track: &Track) -> Self {
         let named = |value: &Option<String>| {
             value
                 .as_deref()

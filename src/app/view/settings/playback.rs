@@ -1,5 +1,5 @@
-//! Playback: what the queue does (shuffle, repeat), the volume, and when
-//! a track counts as listened to.
+//! Playback: what the queue does (shuffle, repeat), the volume, when a
+//! track counts as listened to, and whether it shows on Discord.
 
 use nsh_base::theme;
 use nsh_core::prelude::*;
@@ -63,6 +63,18 @@ pub(super) fn page(store: Store) -> View {
         .border_l_1()
         .border_color(border)
     };
+    #[cfg(not(target_os = "android"))]
+    let discord_presence = store.select(|model| model.discord_presence);
+    #[cfg(not(target_os = "android"))]
+    let presence = move |label, on: bool| {
+        ui::choice(
+            label,
+            move || discord_presence.get() == on,
+            move || store.dispatch(Message::DiscordPresenceChosen(on)),
+        )
+        .border_l_1()
+        .border_color(border)
+    };
     let listen_step = move |label, change: fn(u8) -> u8| {
         ui::button(label, move || {
             store.dispatch(Message::ListenPercentChosen(change(
@@ -86,7 +98,7 @@ pub(super) fn page(store: Store) -> View {
             .child(text(shown).text_size(px(VOLUME_TEXT_SIZE)).tabular_nums())
     };
 
-    view()
+    let page = view()
         .w_full()
         .child(section_title("Queue"))
         .child(
@@ -121,5 +133,12 @@ pub(super) fn page(store: Store) -> View {
                 .child(listen_step("+", |percent| {
                     percent.saturating_add(LISTEN_STEP).min(MAX_LISTEN_PERCENT)
                 })),
-        )
+        );
+    #[cfg(not(target_os = "android"))]
+    let page = page.child(section_title("Discord")).child(
+        label_column_row("Show what plays")
+            .child(presence("Off", false))
+            .child(presence("On", true)),
+    );
+    page
 }

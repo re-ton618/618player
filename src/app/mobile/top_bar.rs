@@ -1,9 +1,10 @@
 use nsh_base::{input, theme};
 use nsh_core::prelude::*;
 
+use super::split::Split;
 use super::{BAR_CELL_SIZE, BAR_ICON_SIZE, TOP_BAR_HEIGHT};
 use crate::app::store::store;
-use crate::app::tabs::{Kind, Message as TabMessage};
+use crate::app::tabs::{Half, Kind, Message as TabMessage};
 use crate::app::Message;
 use crate::theme as tokens;
 use crate::ui::{chrome_button, Icon, Tone};
@@ -14,17 +15,31 @@ const SEARCH_ICON_GAP: f32 = 10.0;
 const SEARCH_TEXT_SIZE: f32 = 15.0;
 
 /// The screen's top bar: settings on the left, the search across the
-/// rest. No window buttons: the system owns the window.
-pub(super) fn top_bar() -> impl IntoElement {
+/// rest. No window buttons: the system owns the window. Settings open in
+/// the upper tab group unless they are open in the lower, and the group
+/// they are in takes the room when it was its header alone; so does the
+/// upper group when the search is typed in.
+pub(super) fn top_bar(split: Signal<Split>) -> impl IntoElement {
     let store = store();
     let border = move || theme().border;
+    let reveal = move |half| split.update(|split| *split = split.revealing(half));
+    let settings_in = store.select(|model| model.tabs.half_of(Kind::Settings));
+    let upper = store.select(|model| model.tabs.half(Half::Upper).first().copied());
 
     let settings = chrome_button(
         Icon::Settings,
         BAR_ICON_SIZE,
         "Settings",
         Tone::Quiet,
-        move || store.dispatch(Message::Tabs(TabMessage::Open(Kind::Settings))),
+        move || {
+            let kind = Kind::Settings;
+            let open = match (settings_in.get_untracked(), upper.get_untracked()) {
+                (None, Some(beside)) => TabMessage::OpenBeside { kind, beside },
+                _ => TabMessage::Open(kind),
+            };
+            store.dispatch(Message::Tabs(open));
+            reveal(settings_in.get_untracked().unwrap_or(Half::Upper));
+        },
     )
     .w(px(BAR_CELL_SIZE))
     .border_r_1()
@@ -33,7 +48,10 @@ pub(super) fn top_bar() -> impl IntoElement {
     let query = store.select(|model| model.search_query.clone());
     let field = input()
         .value(query)
-        .on_change(move |text: &str| store.dispatch(Message::SearchChanged(text.to_owned())))
+        .on_change(move |text: &str| {
+            store.dispatch(Message::SearchChanged(text.to_owned()));
+            reveal(Half::Upper);
+        })
         .placeholder("Search tracks, artists, albums")
         .placeholder_color(|| color(tokens::text_faint()))
         .caret_color(|| color(theme().primary))

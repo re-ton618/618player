@@ -16,12 +16,17 @@ const MENU_WIDTH: f32 = 180.0;
 const MENU_OFFSET: f32 = 1.0;
 
 /// The + cell, square with its own right edge, and its menu of the tabs to
-/// open, hanging from it.
-pub(super) fn add_tab_menu() -> impl IntoElement {
+/// open, hanging from it. They open in the group `beside` is in, leaving
+/// another group they were open in; with no group yet, in the first.
+pub(super) fn add_tab_menu(beside: Option<Kind>) -> impl IntoElement {
     let store = store();
     let item = move |kind: Kind| {
+        let open = match beside {
+            Some(beside) => TabMessage::OpenBeside { kind, beside },
+            None => TabMessage::Open(kind),
+        };
         menu_item()
-            .on_select(move || store.dispatch(Message::Tabs(TabMessage::Open(kind))))
+            .on_select(move || store.dispatch(Message::Tabs(open.clone())))
             .h(px(ROW_HEIGHT))
             .flex_row()
             .items_center()
@@ -49,6 +54,7 @@ pub(super) fn add_tab_menu() -> impl IntoElement {
         .trigger(
             chrome_glyph(Icon::Add, BAR_ICON_SIZE, "Open tab", Tone::Quiet)
                 .w(px(TAB_STRIP_HEIGHT + 1.0))
+                .h(px(TAB_STRIP_HEIGHT))
                 .border_r_1()
                 .border_color(move || theme().border),
         )

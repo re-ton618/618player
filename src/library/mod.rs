@@ -23,6 +23,8 @@ mod watcher;
 use std::path::PathBuf;
 
 pub(crate) use artwork::load_embedded_data_uri;
+#[cfg(target_os = "windows")]
+pub(crate) use artwork::load_embedded_picture;
 pub(crate) use catalog::Catalog;
 pub(crate) use lyrics::{Lyrics, load as load_lyrics};
 #[cfg(test)]

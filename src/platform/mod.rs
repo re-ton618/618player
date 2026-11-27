@@ -13,10 +13,22 @@ use android as system;
 #[cfg(not(target_os = "android"))]
 use desktop as system;
 
-pub(crate) use system::{audio_dir, config_dir, data_local_dir, init, request_audio_access};
-/// The system's media controls; the desktop has none yet.
-#[cfg(target_os = "android")]
+/// The system's media controls (macOS and Linux have none yet).
 pub(crate) use system::media;
+/// Discord's Rich Presence.
+#[cfg(not(target_os = "android"))]
+pub(crate) use system::presence;
+pub(crate) use system::{audio_dir, config_dir, data_local_dir, init, request_audio_access};
+
+/// Discord shows no phone's music.
+#[cfg(target_os = "android")]
+pub(crate) mod presence {
+    pub(crate) fn saved() -> bool {
+        false
+    }
+
+    pub(crate) fn choose(_shown: bool) {}
+}
 
 /// What came of asking for the device's music.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

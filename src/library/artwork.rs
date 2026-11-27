@@ -8,6 +8,22 @@ use lofty::tag::Tag;
 
 /// The embedded cover of `path` as a `data:` URI an image view can show.
 pub(crate) fn load_embedded_data_uri(path: &Path) -> lofty::error::Result<Option<String>> {
+    Ok(embedded(path)?.map(|picture| {
+        let mime = picture
+            .mime_type()
+            .map_or("application/octet-stream", MimeType::as_str);
+        data_uri(mime, picture.data())
+    }))
+}
+
+/// The embedded cover of `path`, its bytes as the file holds them (the
+/// system's media controls read them).
+#[cfg(target_os = "windows")]
+pub(crate) fn load_embedded_picture(path: &Path) -> lofty::error::Result<Option<Vec<u8>>> {
+    Ok(embedded(path)?.map(Picture::into_data))
+}
+
+fn embedded(path: &Path) -> lofty::error::Result<Option<Picture>> {
     let tagged_file = Probe::open(path)?
         .options(
             ParseOptions::new()
@@ -15,15 +31,9 @@ pub(crate) fn load_embedded_data_uri(path: &Path) -> lofty::error::Result<Option
                 .read_properties(false),
         )
         .read()?;
-
     Ok(preferred_picture(tagged_file.tags())
         .filter(|picture| !picture.data().is_empty())
-        .map(|picture| {
-            let mime = picture
-                .mime_type()
-                .map_or("application/octet-stream", MimeType::as_str);
-            data_uri(mime, picture.data())
-        }))
+        .cloned())
 }
 
 fn data_uri(mime: &str, bytes: &[u8]) -> String {

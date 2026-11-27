@@ -17,7 +17,8 @@ mod workspace;
 
 pub(super) use playback::progress;
 pub(super) use playlist_prompt::playlist_prompt;
-pub(super) use workspace::workspace;
+pub(super) use song_information::Details;
+pub(super) use workspace::content;
 
 use nsh_base::theme;
 use nsh_core::prelude::*;
@@ -30,7 +31,8 @@ pub(super) const PLAYBACK_BAR_HEIGHT: f32 = 40.0;
 pub(super) const BAR_CELL_WIDTH: f32 = 40.0;
 /// Icons in bars and headers.
 pub(super) const BAR_ICON_SIZE: f32 = 12.0;
-/// The window's padding, and the room between top-level regions.
+/// The window's padding, and the room between regions: the bars and the
+/// workspace's tab groups.
 const WINDOW_PADDING: f32 = 8.0;
 const REGION_GAP: f32 = 8.0;
 
