@@ -1,5 +1,3 @@
-The first public release of 618 Player.
+A small fix to the playback bar.
 
-- Library, playlists, Recently Added and Most Played tabs
-- Gapless playback, themes, lyrics and Discord Rich Presence
-- Updates itself: checks for a newer version at launch and in Settings > About
+- The progress bar sits in its own bordered cell in the middle of the playback bar, apart from the transport and the shuffle, repeat and volume buttons
