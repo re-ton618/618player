@@ -24,6 +24,9 @@ const TRACK_ARTIST_TEXT_SIZE: f32 = 11.0;
 const SIDE_REGION_WIDTH: f32 =
     ARTWORK_SIZE + CHROME_BORDER_WIDTH + TRACK_INFO_WIDTH + 3.0 * BAR_CELL_WIDTH;
 const PROGRESS_PADDING: f32 = 10.0;
+/// The room kept on each side of the progress's cell, so it never meets
+/// the transport or the queue's modes: one bar cell.
+const PROGRESS_INSET: f32 = BAR_CELL_WIDTH;
 const PROGRESS_GAP: f32 = 10.0;
 const PROGRESS_TRACK_HEIGHT: f32 = 3.0;
 /// The progress takes presses and drags this far around its line.
@@ -37,7 +40,8 @@ const TIME_TEXT_SIZE: f32 = 10.0;
 /// The bar under the workspace: artwork, the track's name and artist and
 /// the transport on the left, the
 /// progress in the middle, shuffle, repeat and the volume on the right.
-/// Leading cells own their right edge, trailing ones their left.
+/// Leading cells own their right edge, trailing ones their left, and the
+/// progress, set apart from both, its two.
 pub(super) fn playback_bar() -> impl IntoElement {
     let store = store();
     let border = move || theme().border;
@@ -137,7 +141,25 @@ pub(super) fn playback_bar() -> impl IntoElement {
         .border_1()
         .border_color(border)
         .child(left)
-        .child(progress(store, PROGRESS_HIT_HEIGHT, TIME_TEXT_SIZE))
+        .child(
+            view()
+                .flex_1()
+                .min_w(px(0.0))
+                .h_full()
+                .flex_row()
+                .px(px(PROGRESS_INSET))
+                .child(
+                    view()
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .h_full()
+                        .flex_row()
+                        .border_l_1()
+                        .border_r_1()
+                        .border_color(border)
+                        .child(progress(store, PROGRESS_HIT_HEIGHT, TIME_TEXT_SIZE)),
+                ),
+        )
         .child(right)
 }
 
