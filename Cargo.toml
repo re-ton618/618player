@@ -43,14 +43,17 @@ ndk-context = "0.1.1"
 # own name (`nsh`) is lost to the crate nsh generates from this file.
 nsh-android = { package = "nsh-platform-android", version = "0.7.1", default-features = false, features = ["svg"] }
 
+# `updater` checks GitHub Releases for a newer version and replaces the app
+# (`src/platform/desktop/updates.rs`); `net` is the HTTP it checks with
+# (macOS always has its own, and no such feature).
 [target.'cfg(target_os = "linux")'.dependencies]
-nsh-platform-linux = { version = "0.7.1", default-features = false, features = ["svg"] }
+nsh-platform-linux = { version = "0.7.1", default-features = false, features = ["svg", "updater", "net"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-nsh-platform-macos = { version = "0.7.1", default-features = false, features = ["svg"] }
+nsh-platform-macos = { version = "0.7.1", default-features = false, features = ["svg", "updater"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-nsh-platform-windows = { version = "0.7.1", default-features = false, features = ["svg"] }
+nsh-platform-windows = { version = "0.7.1", default-features = false, features = ["svg", "updater", "net"] }
 # The system's media controls (`src/platform/desktop/media/smtc.rs`); nsh's
 # own, so it adds no crate.
 windows = { version = "0.62", features = ["Foundation", "Media", "Media_Playback", "Storage_Streams"] }

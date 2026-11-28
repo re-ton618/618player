@@ -2,6 +2,7 @@
 //! one. Each category's page lives in its own module; a category that grows
 //! subcategories becomes a folder (`library/mod.rs` and a file per one).
 
+mod about;
 mod appearance;
 mod library;
 mod playback;
@@ -45,6 +46,7 @@ pub(super) fn settings() -> impl IntoElement {
                 Category::Library => library::page(store),
                 Category::Playback => playback::page(store),
                 Category::Appearance => appearance::page(store),
+                Category::About => about::page(store),
             };
             scroll()
                 .flex_1()

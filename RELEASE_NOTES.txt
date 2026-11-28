@@ -1,0 +1,5 @@
+The first public release of 618 Player.
+
+- Library, playlists, Recently Added and Most Played tabs
+- Gapless playback, themes, lyrics and Discord Rich Presence
+- Updates itself: checks for a newer version at launch and in Settings > About

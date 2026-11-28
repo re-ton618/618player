@@ -12,17 +12,20 @@ pub(super) enum Category {
     Playback,
     /// The theme the app is drawn in.
     Appearance,
+    /// The app's version, and its updates.
+    About,
 }
 
 impl Category {
     /// Every category, in the order the list shows them.
-    pub(super) const ALL: [Self; 3] = [Self::Library, Self::Playback, Self::Appearance];
+    pub(super) const ALL: [Self; 4] = [Self::Library, Self::Playback, Self::Appearance, Self::About];
 
     pub(super) const fn label(self) -> &'static str {
         match self {
             Self::Library => "Library",
             Self::Playback => "Playback",
             Self::Appearance => "Appearance",
+            Self::About => "About",
         }
     }
 }

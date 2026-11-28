@@ -1,0 +1,140 @@
+# Builds 618 Player for Windows and publishes it as a GitHub Release when a
+# version tag is pushed:
+#
+#   1. set "version" in nsh.json (and raise "build"), write RELEASE_NOTES.txt
+#   2. commit, then: git tag v0.2.0 && git push origin main v0.2.0
+#
+# The release holds the installer, the portable zip (also what installed apps
+# update from), and latest.json signed with the update key, which the apps
+# check at launch (nsh.json "updater").
+#
+# Run it by hand (Actions > Release > Run workflow) to try the whole build
+# without releasing: what it would publish is attached to the run instead.
+#
+# Needs the repository secret NSH_UPDATE_KEY: the contents of the
+# `update.secret` that `nsh keygen` made for nsh.json's "publicKey".
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # The nsh CLI that packages the app; raise it on purpose, after trying the
+  # new one locally.
+  NSH_VERSION: v0.7.0
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the version
+        id: version
+        run: |
+          $version = (Get-Content nsh.json -Raw | ConvertFrom-Json).version
+          if ("${{ github.event_name }}" -eq "push" -and "v$version" -ne "${{ github.ref_name }}") {
+            throw "The tag ${{ github.ref_name }} does not match nsh.json's version $version"
+          }
+          if (-not (Test-Path RELEASE_NOTES.txt)) { throw "RELEASE_NOTES.txt is missing" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=v$version" >> $env:GITHUB_OUTPUT
+
+      - name: Install Rust
+        run: rustup update stable --no-self-update && rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install nsh
+        run: |
+          irm https://nsh.dev/install.ps1 | iex
+          "$env:LOCALAPPDATA\nsh\bin" >> $env:GITHUB_PATH
+
+      - name: Install Inno Setup
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
+            choco install innosetup --no-progress -y
+          }
+
+      - name: Package
+        run: nsh package --target windows
+
+      - name: Gather the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NSH_UPDATE_KEY: ${{ secrets.NSH_UPDATE_KEY }}
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $tag = "${{ steps.version.outputs.tag }}"
+          $out = ".nsh\out"
+          $archive = "$out\618player-$version-windows-x86_64.zip"
+          if (-not (Test-Path $archive)) { throw "nsh package wrote no $archive" }
+          # Inno Setup's output, wherever nsh had it written.
+          $setup = Get-ChildItem $out -Recurse -Filter "618player-setup.exe" | Select-Object -First 1
+          if (-not $setup) { throw "nsh package wrote no installer: is Inno Setup installed?" }
+          New-Item -ItemType Directory -Force dist, previous | Out-Null
+
+          # The last release's archive: apps running it download a small
+          # patch instead of the whole app.
+          $previous = @()
+          gh release download --repo "${{ github.repository }}" --pattern "*-windows-x86_64.zip" --dir previous
+          if ($LASTEXITCODE -eq 0) {
+            $previous = Get-ChildItem previous -Filter *.zip | ForEach-Object { "--previous"; $_.FullName }
+          } else {
+            Write-Host "No earlier release: no patch this time."
+            $global:LASTEXITCODE = 0
+          }
+
+          if (-not $env:NSH_UPDATE_KEY) { throw "The NSH_UPDATE_KEY secret is not set" }
+          $key = Join-Path $env:RUNNER_TEMP update.secret
+          Set-Content -Path $key -Value $env:NSH_UPDATE_KEY.Trim() -NoNewline -Encoding ascii
+          try {
+            nsh update-manifest $archive --key $key --notes RELEASE_NOTES.txt `
+              --base-url "https://github.com/${{ github.repository }}/releases/download/$tag/" `
+              @previous -o dist
+            if ($LASTEXITCODE -ne 0) { throw "nsh update-manifest failed" }
+          } finally {
+            Remove-Item $key -Force
+          }
+          Copy-Item $archive, $setup.FullName dist
+          Get-ChildItem dist
+
+      - name: Keep what a release would hold (a run by hand)
+        if: github.event_name != 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: 618player-${{ steps.version.outputs.version }}-windows
+          path: dist
+
+      - name: Publish the release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = @"
+          $(Get-Content RELEASE_NOTES.txt -Raw)
+
+          ## Download (Windows 10 1809+, 64-bit)
+
+          - **618player-setup.exe**: installs for your user (no admin needed) and adds a Start menu entry.
+          - **618player-${{ steps.version.outputs.version }}-windows-x86_64.zip**: portable; unzip anywhere you can write to and run ``618player.exe``.
+
+          Both update themselves: the app checks for a newer version when it starts, and in Settings > About.
+
+          The app is not code-signed yet, so Windows SmartScreen may say "Windows protected your PC": choose **More info**, then **Run anyway**.
+          "@
+          $notes | Set-Content release-body.md -Encoding utf8
+          gh release create "${{ github.ref_name }}" (Get-ChildItem dist).FullName `
+            --repo "${{ github.repository }}" `
+            --title "618 Player ${{ steps.version.outputs.version }}" `
+            --notes-file release-body.md

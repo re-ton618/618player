@@ -54,6 +54,8 @@ impl Store {
         super::input::bind(move |message| store.dispatch(Message::Tabs(message)));
         super::media_session::bind(store, player_for_media);
         store.request_audio_access();
+        // A newer version, if there is one; nothing shows otherwise.
+        crate::platform::updates::check(true);
         store
     }
 
@@ -139,6 +141,7 @@ impl Store {
                 }
                 Effect::SaveListenPercent(percent) => super::listening::save(percent),
                 Effect::ChooseDiscordPresence(shown) => crate::platform::presence::choose(shown),
+                Effect::CheckForUpdates => crate::platform::updates::check(false),
             }
         }
     }

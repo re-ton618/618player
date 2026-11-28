@@ -29,3 +29,11 @@ target
 
 # Local design notes
 /docs
+
+# Signing keys: the update key (`nsh keygen`), Android keystores, Windows
+# certificates and the Play service account. Kept outside the repository.
+*.secret
+*.jks
+*.keystore
+*.pfx
+*service-account*.json

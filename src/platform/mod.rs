@@ -20,6 +20,16 @@ pub(crate) use system::media;
 pub(crate) use system::presence;
 pub(crate) use system::{audio_dir, config_dir, data_local_dir, init, request_audio_access};
 
+/// The app's own updates.
+#[cfg(not(target_os = "android"))]
+pub(crate) use system::updates;
+
+/// A phone's app is updated by its store (Google Play), not by itself.
+#[cfg(target_os = "android")]
+pub(crate) mod updates {
+    pub(crate) fn check(_quiet: bool) {}
+}
+
 /// Discord shows no phone's music.
 #[cfg(target_os = "android")]
 pub(crate) mod presence {

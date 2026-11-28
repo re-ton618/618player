@@ -182,6 +182,12 @@ enum Message {
     ListenPercentChosen(u8),
     /// What plays is to show on Discord, or not (the Settings tab).
     DiscordPresenceChosen(bool),
+    /// The user asked for a newer version of the app (the Settings tab).
+    #[cfg_attr(
+        target_os = "android",
+        allow(dead_code, reason = "a phone's app is updated by its store")
+    )]
+    CheckForUpdatesPressed,
     /// The Playlists tab is to show the playlist of this id.
     PlaylistChosen(i64),
     /// The naming prompt is to ask for a new playlist's name; the
@@ -236,6 +242,8 @@ enum Effect {
     SaveListenPercent(u8),
     /// Shows what plays on Discord or takes it down, and keeps the choice.
     ChooseDiscordPresence(bool),
+    /// Asks for a newer version of the app and shows what came of it.
+    CheckForUpdates,
 }
 
 /// Takes `message`, and with it keeps two promises whatever it was: the
@@ -493,6 +501,7 @@ impl Model {
                     return vec![Effect::ChooseDiscordPresence(shown)];
                 }
             }
+            Message::CheckForUpdatesPressed => return vec![Effect::CheckForUpdates],
             Message::PlaylistChosen(id) => {
                 if self.playlists.choose(id) {
                     self.rebuild_playlist_rows();

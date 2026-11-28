@@ -7,6 +7,10 @@
   "theme": "theme.json",
   "rust": ".",
   "root": "App",
+  "updater": {
+    "github": "re-ton618/618player",
+    "publicKey": "DcWGGOnGK4ObRm9E0DnMvuckY4eI9Bt/gU4xea003qk="
+  },
   "android": {
     "permissions": [
       "android.permission.READ_MEDIA_AUDIO",

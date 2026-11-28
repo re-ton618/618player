@@ -4,6 +4,7 @@
 
 pub(crate) mod media;
 pub(crate) mod presence;
+pub(crate) mod updates;
 
 use std::path::PathBuf;
 
